@@ -265,9 +265,13 @@ export default function App() {
     let cancelled = false
     const ping = async () => {
       setBackendWaking(true)
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 8; i++) {
         try {
-          const res = await fetch(`${API}/registry`, { signal: AbortSignal.timeout(8000) })
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 40000) // 40s per attempt
+          const res = await fetch(`${API}/registry`, { signal: controller.signal })
+          clearTimeout(timer)
+          if (!res.ok) throw new Error('not ok')
           const data = await res.json()
           if (!cancelled) {
             setRegistryCount(data.count ?? 0)
@@ -276,7 +280,7 @@ export default function App() {
           }
           return
         } catch {
-          await new Promise(r => setTimeout(r, 3000))
+          if (!cancelled) await new Promise(r => setTimeout(r, 5000))
         }
       }
       if (!cancelled) setBackendWaking(false)
@@ -294,15 +298,18 @@ export default function App() {
   }, [])
 
   // ── Fetch with auto-retry (handles Render cold start) ────────────────────
-  const fetchWithRetry = async (url: string, options: RequestInit, retries = 4, delayMs = 4000): Promise<Response> => {
+  const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, delayMs = 5000): Promise<Response> => {
     for (let i = 0; i < retries; i++) {
       try {
-        const res = await fetch(url, { ...options, signal: AbortSignal.timeout(20000) })
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 50000) // 50s per attempt
+        const res = await fetch(url, { ...options, signal: controller.signal })
+        clearTimeout(timer)
         if (res.ok) return res
       } catch { /* retry */ }
       if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs))
     }
-    throw new Error('Backend is not responding. Please wait 30 seconds and try again (free hosting cold start).')
+    throw new Error('Backend is not responding. Please wait a moment and try again.')
   }
 
   // ── Registry actions ──────────────────────────────────────────────────────
