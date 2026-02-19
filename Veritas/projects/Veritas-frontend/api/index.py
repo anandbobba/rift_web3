@@ -7,21 +7,22 @@ import base64
 import os
 import numpy as np
 from scipy.fft import dctn
+import hashlib
+import requests
 import cloudinary
 import cloudinary.uploader
 
 # On Vercel, env vars are injected directly — no .env file needed
 cloudinary.config(cloudinary_url=os.getenv("CLOUDINARY_URL", ""))
 
-from algosdk.v2client import algod, indexer
+ALGOD_URL = "https://testnet-api.algonode.cloud"
+APP_ID    = 755787017
 
-ALGOD_URL   = "https://testnet-api.algonode.cloud"
-INDEXER_URL = "https://testnet-idx.algonode.cloud"
-ALGOD_TOKEN = ""
-APP_ID      = 755787017
 
-algod_client   = algod.AlgodClient(ALGOD_TOKEN, ALGOD_URL)
-indexer_client = indexer.IndexerClient(ALGOD_TOKEN, INDEXER_URL)
+def encode_algorand_address(pk_bytes: bytes) -> str:
+    """Encode 32-byte public key as an Algorand address (base32 + checksum)."""
+    chksum = hashlib.new("sha512_256", pk_bytes).digest()[-4:]
+    return base64.b32encode(pk_bytes + chksum).decode().upper().rstrip("=")
 
 app = FastAPI(title="Veritas Protocol API")
 
@@ -61,17 +62,20 @@ def compute_phash(img: Image.Image) -> imagehash.ImageHash:
 def fetch_registry_from_chain() -> dict:
     registry = {}
     try:
-        boxes = algod_client.application_boxes(APP_ID)
-        for box_ref in boxes.get("boxes", []):
-            import base64 as _b64
-            box_name_bytes = _b64.b64decode(box_ref["name"])
-            raw_key = box_name_bytes.decode("utf-8")
+        resp = requests.get(f"{ALGOD_URL}/v2/applications/{APP_ID}/boxes", timeout=10)
+        for box_ref in resp.json().get("boxes", []):
+            box_name_b64 = box_ref["name"]
+            box_name_bytes = base64.b64decode(box_name_b64)
+            raw_key = box_name_bytes.decode("utf-8", errors="replace")
             BOX_PREFIX = "registered_hashes"
             phash_hex = raw_key[len(BOX_PREFIX):] if raw_key.startswith(BOX_PREFIX) else raw_key
-            box_data = algod_client.application_box_by_name(APP_ID, box_name_bytes)
-            value_bytes = _b64.b64decode(box_data.get("value", ""))
-            from algosdk import encoding
-            registry[phash_hex] = encoding.encode_address(value_bytes)
+            box_resp = requests.get(
+                f"{ALGOD_URL}/v2/applications/{APP_ID}/box",
+                params={"name": f"b64:{box_name_b64}"},
+                timeout=10,
+            )
+            value_bytes = base64.b64decode(box_resp.json().get("value", ""))
+            registry[phash_hex] = encode_algorand_address(value_bytes)
     except Exception as e:
         print(f"[CHAIN] Error: {e}")
     return registry
