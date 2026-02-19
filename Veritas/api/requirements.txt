@@ -5,3 +5,4 @@ imagehash
 Pillow
 numpy
 scipy
+algosdk

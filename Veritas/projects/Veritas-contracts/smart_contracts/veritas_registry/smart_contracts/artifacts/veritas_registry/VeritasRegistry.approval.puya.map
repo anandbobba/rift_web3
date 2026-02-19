@@ -1,7 +1,7 @@
 {
   "version": 3,
   "sources": [
-    "../../veritas_registry/contract.py"
+    "../../../contract.py"
   ],
   "mappings": ";AAEA;;AAAA;;;AAAA;;;;;;AAAA;;;AAAA;;;;AAAA;AAIK;;AAAA;AAAA;;AAAA;AAAA;AAAA;;;;;;;;;;;AAAA;;;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAEwB;;;;;;;;;;;;;;;;;;;AAAd;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAP;AACiC;;AAAjC;AAHH;;AAAA",
   "op_pc_offset": 0,

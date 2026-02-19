@@ -24,7 +24,7 @@ import { SendParams, SendSingleTransactionResult, SendAtomicTransactionComposerR
 import { Address, encodeAddress, modelsv2, OnApplicationComplete, Transaction, TransactionSigner } from 'algosdk'
 import SimulateResponse = modelsv2.SimulateResponse
 
-export const APP_SPEC: Arc56Contract = {"name":"VeritasRegistry","structs":{},"methods":[{"name":"register_work","args":[{"type":"string","name":"p_hash"}],"returns":{"type":"string"},"actions":{"create":[],"call":["NoOp"]},"readonly":false,"events":[],"recommendations":{}}],"arcs":[22,28],"networks":{},"state":{"schema":{"global":{"ints":0,"bytes":0},"local":{"ints":0,"bytes":0}},"keys":{"global":{},"local":{},"box":{}},"maps":{"global":{},"local":{},"box":{"registered_hashes":{"keyType":"AVMString","valueType":"address","prefix":"cmVnaXN0ZXJlZF9oYXNoZXM="}}}},"bareActions":{"create":["NoOp"],"call":[]},"sourceInfo":{"approval":{"sourceInfo":[{"pc":[82],"errorMessage":"Plagiarism Alert: Hash already registered!"},{"pc":[44],"errorMessage":"invalid array length header"},{"pc":[52],"errorMessage":"invalid number of bytes for arc4.dynamic_array<arc4.uint8>"}],"pcOffsetMethod":"none"},"clear":{"sourceInfo":[],"pcOffsetMethod":"none"}},"source":{"approval":"I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuYXBwcm92YWxfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjMKICAgIC8vIGNsYXNzIFZlcml0YXNSZWdpc3RyeShBUkM0Q29udHJhY3QpOgogICAgdHhuIE51bUFwcEFyZ3MKICAgIGJ6IG1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVANwogICAgcHVzaGJ5dGVzIDB4YzBiYWQ5NWUgLy8gbWV0aG9kICJyZWdpc3Rlcl93b3JrKHN0cmluZylzdHJpbmciCiAgICB0eG5hIEFwcGxpY2F0aW9uQXJncyAwCiAgICBtYXRjaCBtYWluX3JlZ2lzdGVyX3dvcmtfcm91dGVANQogICAgZXJyCgptYWluX3JlZ2lzdGVyX3dvcmtfcm91dGVANToKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjgKICAgIC8vIEBhcmM0LmFiaW1ldGhvZAogICAgdHhuIE9uQ29tcGxldGlvbgogICAgIQogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgICYmCiAgICBhc3NlcnQKICAgIGIgcmVnaXN0ZXJfd29yawoKbWFpbl9fX2FsZ29weV9kZWZhdWx0X2NyZWF0ZUA3OgogICAgdHhuIE9uQ29tcGxldGlvbgogICAgIQogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgICEKICAgICYmCiAgICByZXR1cm4KCgovLyBzbWFydF9jb250cmFjdHMudmVyaXRhc19yZWdpc3RyeS5jb250cmFjdC5WZXJpdGFzUmVnaXN0cnkucmVnaXN0ZXJfd29ya1tyb3V0aW5nXSgpIC0+IHZvaWQ6CnJlZ2lzdGVyX3dvcms6CiAgICAvLyBzbWFydF9jb250cmFjdHMvdmVyaXRhc19yZWdpc3RyeS9jb250cmFjdC5weTo4CiAgICAvLyBAYXJjNC5hYmltZXRob2QKICAgIHR4bmEgQXBwbGljYXRpb25BcmdzIDEKICAgIGR1cAogICAgcHVzaGludCAwCiAgICBleHRyYWN0X3VpbnQxNiAvLyBvbiBlcnJvcjogaW52YWxpZCBhcnJheSBsZW5ndGggaGVhZGVyCiAgICBwdXNoaW50IDIKICAgICsKICAgIGRpZyAxCiAgICBsZW4KICAgID09CiAgICBhc3NlcnQgLy8gaW52YWxpZCBudW1iZXIgb2YgYnl0ZXMgZm9yIGFyYzQuZHluYW1pY19hcnJheTxhcmM0LnVpbnQ4PgogICAgZXh0cmFjdCAyIDAKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjEwLTExCiAgICAvLyAjIENoZWNrIGlmIHRoZSBoYXNoIGFscmVhZHkgZXhpc3RzIHVzaW5nICdpbicgaW5zdGVhZCBvZiAnLmNvbnRhaW5zKCknCiAgICAvLyBhc3NlcnQgcF9oYXNoIG5vdCBpbiBzZWxmLnJlZ2lzdGVyZWRfaGFzaGVzLCAiUGxhZ2lhcmlzbSBBbGVydDogSGFzaCBhbHJlYWR5IHJlZ2lzdGVyZWQhIgogICAgcHVzaGJ5dGVzICJyZWdpc3RlcmVkX2hhc2hlcyIKICAgIHN3YXAKICAgIGNvbmNhdAogICAgZHVwCiAgICBib3hfbGVuCiAgICBidXJ5IDEKICAgICEKICAgIGFzc2VydCAvLyBQbGFnaWFyaXNtIEFsZXJ0OiBIYXNoIGFscmVhZHkgcmVnaXN0ZXJlZCEKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjEzLTE0CiAgICAvLyAjIFN0b3JlIHRoZSBoYXNoIGFuZCBtYXAgaXQgdG8gdGhlIHNlbmRlcidzIGFjY291bnQKICAgIC8vIHNlbGYucmVnaXN0ZXJlZF9oYXNoZXNbcF9oYXNoXSA9IFR4bi5zZW5kZXIKICAgIHR4biBTZW5kZXIKICAgIGJveF9wdXQKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjgKICAgIC8vIEBhcmM0LmFiaW1ldGhvZAogICAgcHVzaGJ5dGVzIDB4MTUxZjdjNzUwMDIwNDE3Mjc0Nzc2ZjcyNmIyMDcyNjU2NzY5NzM3NDY1NzI2NTY0MjA3Mzc1NjM2MzY1NzM3MzY2NzU2YzZjNzkyZQogICAgbG9nCiAgICBwdXNoaW50IDEKICAgIHJldHVybgo=","clear":"I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuY2xlYXJfc3RhdGVfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg=="},"byteCode":{"approval":"CzEbQQAYgATAutleNhoAjgEAAQAxGRQxGBBEQgAIMRkUMRgUEEM2GgFJgQBZgQIISwEVEkRXAgCAEXJlZ2lzdGVyZWRfaGFzaGVzTFBJvUUBFEQxAL+AJhUffHUAIEFydHdvcmsgcmVnaXN0ZXJlZCBzdWNjZXNzZnVsbHkusIEBQw==","clear":"C4EBQw=="},"compilerInfo":{"compiler":"puya","compilerVersion":{"major":5,"minor":7,"patch":1}},"events":[],"templateVariables":{}} as unknown as Arc56Contract
+export const APP_SPEC: Arc56Contract = {"name":"VeritasRegistry","structs":{},"methods":[{"name":"register_work","args":[{"type":"string","name":"p_hash"}],"returns":{"type":"void"},"actions":{"create":[],"call":["NoOp"]},"readonly":false,"events":[],"recommendations":{}}],"arcs":[22,28],"networks":{},"state":{"schema":{"global":{"ints":0,"bytes":0},"local":{"ints":0,"bytes":0}},"keys":{"global":{},"local":{},"box":{}},"maps":{"global":{},"local":{},"box":{"registered_hashes":{"keyType":"AVMString","valueType":"address","prefix":"cmVnaXN0ZXJlZF9oYXNoZXM="}}}},"bareActions":{"create":["NoOp"],"call":[]},"sourceInfo":{"approval":{"sourceInfo":[{"pc":[82],"errorMessage":"Plagiarism Alert: Hash already registered!"},{"pc":[44],"errorMessage":"invalid array length header"},{"pc":[52],"errorMessage":"invalid number of bytes for arc4.dynamic_array<arc4.uint8>"}],"pcOffsetMethod":"none"},"clear":{"sourceInfo":[],"pcOffsetMethod":"none"}},"source":{"approval":"I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuYXBwcm92YWxfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjMKICAgIC8vIGNsYXNzIFZlcml0YXNSZWdpc3RyeShBUkM0Q29udHJhY3QpOgogICAgdHhuIE51bUFwcEFyZ3MKICAgIGJ6IG1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVANwogICAgcHVzaGJ5dGVzIDB4YmIzYzFhZmYgLy8gbWV0aG9kICJyZWdpc3Rlcl93b3JrKHN0cmluZyl2b2lkIgogICAgdHhuYSBBcHBsaWNhdGlvbkFyZ3MgMAogICAgbWF0Y2ggbWFpbl9yZWdpc3Rlcl93b3JrX3JvdXRlQDUKICAgIGVycgoKbWFpbl9yZWdpc3Rlcl93b3JrX3JvdXRlQDU6CiAgICAvLyBzbWFydF9jb250cmFjdHMvdmVyaXRhc19yZWdpc3RyeS9jb250cmFjdC5weTo3CiAgICAvLyBAYXJjNC5hYmltZXRob2QKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIHR4biBBcHBsaWNhdGlvbklECiAgICAmJgogICAgYXNzZXJ0CiAgICBiIHJlZ2lzdGVyX3dvcmsKCm1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVANzoKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIHR4biBBcHBsaWNhdGlvbklECiAgICAhCiAgICAmJgogICAgcmV0dXJuCgoKLy8gc21hcnRfY29udHJhY3RzLnZlcml0YXNfcmVnaXN0cnkuY29udHJhY3QuVmVyaXRhc1JlZ2lzdHJ5LnJlZ2lzdGVyX3dvcmtbcm91dGluZ10oKSAtPiB2b2lkOgpyZWdpc3Rlcl93b3JrOgogICAgLy8gc21hcnRfY29udHJhY3RzL3Zlcml0YXNfcmVnaXN0cnkvY29udHJhY3QucHk6NwogICAgLy8gQGFyYzQuYWJpbWV0aG9kCiAgICB0eG5hIEFwcGxpY2F0aW9uQXJncyAxCiAgICBkdXAKICAgIHB1c2hpbnQgMAogICAgZXh0cmFjdF91aW50MTYgLy8gb24gZXJyb3I6IGludmFsaWQgYXJyYXkgbGVuZ3RoIGhlYWRlcgogICAgcHVzaGludCAyCiAgICArCiAgICBkaWcgMQogICAgbGVuCiAgICA9PQogICAgYXNzZXJ0IC8vIGludmFsaWQgbnVtYmVyIG9mIGJ5dGVzIGZvciBhcmM0LmR5bmFtaWNfYXJyYXk8YXJjNC51aW50OD4KICAgIGV4dHJhY3QgMiAwCiAgICAvLyBzbWFydF9jb250cmFjdHMvdmVyaXRhc19yZWdpc3RyeS9jb250cmFjdC5weTo5CiAgICAvLyBhc3NlcnQgcF9oYXNoIG5vdCBpbiBzZWxmLnJlZ2lzdGVyZWRfaGFzaGVzLCAiUGxhZ2lhcmlzbSBBbGVydDogSGFzaCBhbHJlYWR5IHJlZ2lzdGVyZWQhIgogICAgcHVzaGJ5dGVzICJyZWdpc3RlcmVkX2hhc2hlcyIKICAgIHN3YXAKICAgIGNvbmNhdAogICAgZHVwCiAgICBib3hfbGVuCiAgICBidXJ5IDEKICAgICEKICAgIGFzc2VydCAvLyBQbGFnaWFyaXNtIEFsZXJ0OiBIYXNoIGFscmVhZHkgcmVnaXN0ZXJlZCEKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjEwCiAgICAvLyBzZWxmLnJlZ2lzdGVyZWRfaGFzaGVzW3BfaGFzaF0gPSBUeG4uc2VuZGVyCiAgICB0eG4gU2VuZGVyCiAgICBib3hfcHV0CiAgICAvLyBzbWFydF9jb250cmFjdHMvdmVyaXRhc19yZWdpc3RyeS9jb250cmFjdC5weTo3CiAgICAvLyBAYXJjNC5hYmltZXRob2QKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg==","clear":"I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuY2xlYXJfc3RhdGVfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg=="},"byteCode":{"approval":"CzEbQQAYgAS7PBr/NhoAjgEAAQAxGRQxGBBEQgAIMRkUMRgUEEM2GgFJgQBZgQIISwEVEkRXAgCAEXJlZ2lzdGVyZWRfaGFzaGVzTFBJvUUBFEQxAL+BAUM=","clear":"C4EBQw=="},"compilerInfo":{"compiler":"puya","compilerVersion":{"major":5,"minor":7,"patch":1}},"events":[],"templateVariables":{}} as unknown as Arc56Contract
 
 /**
  * A state record containing binary data
@@ -71,7 +71,7 @@ export type VeritasRegistryArgs = {
    * The object representation of the arguments for each method
    */
   obj: {
-    'register_work(string)string': {
+    'register_work(string)void': {
       pHash: string
     }
   }
@@ -79,7 +79,7 @@ export type VeritasRegistryArgs = {
    * The tuple representation of the arguments for each method
    */
   tuple: {
-    'register_work(string)string': [pHash: string]
+    'register_work(string)void': [pHash: string]
   }
 }
 
@@ -87,7 +87,7 @@ export type VeritasRegistryArgs = {
  * The return type for each method
  */
 export type VeritasRegistryReturns = {
-  'register_work(string)string': string
+  'register_work(string)void': void
 }
 
 /**
@@ -98,10 +98,10 @@ export type VeritasRegistryTypes = {
    * Maps method signatures / names to their argument and return types.
    */
   methods:
-    & Record<'register_work(string)string' | 'register_work', {
-      argsObj: VeritasRegistryArgs['obj']['register_work(string)string']
-      argsTuple: VeritasRegistryArgs['tuple']['register_work(string)string']
-      returns: VeritasRegistryReturns['register_work(string)string']
+    & Record<'register_work(string)void' | 'register_work', {
+      argsObj: VeritasRegistryArgs['obj']['register_work(string)void']
+      argsTuple: VeritasRegistryArgs['tuple']['register_work(string)void']
+      returns: VeritasRegistryReturns['register_work(string)void']
     }>
   /**
    * Defines the shape of the state of the application.
@@ -170,15 +170,15 @@ export type VeritasRegistryDeployParams = Expand<Omit<AppFactoryDeployParams, 'c
  */
 export abstract class VeritasRegistryParamsFactory {
   /**
-   * Constructs a no op call for the register_work(string)string ABI method
+   * Constructs a no op call for the register_work(string)void ABI method
    *
    * @param params Parameters for the call
    * @returns An `AppClientMethodCallParams` object for the call
    */
-  static registerWork(params: CallParams<VeritasRegistryArgs['obj']['register_work(string)string'] | VeritasRegistryArgs['tuple']['register_work(string)string']> & CallOnComplete): AppClientMethodCallParams & CallOnComplete {
+  static registerWork(params: CallParams<VeritasRegistryArgs['obj']['register_work(string)void'] | VeritasRegistryArgs['tuple']['register_work(string)void']> & CallOnComplete): AppClientMethodCallParams & CallOnComplete {
     return {
       ...params,
-      method: 'register_work(string)string' as const,
+      method: 'register_work(string)void' as const,
       args: Array.isArray(params.args) ? params.args : [params.args.pHash],
     }
   }
@@ -423,12 +423,12 @@ export class VeritasRegistryClient {
     },
 
     /**
-     * Makes a call to the VeritasRegistry smart contract using the `register_work(string)string` ABI method.
+     * Makes a call to the VeritasRegistry smart contract using the `register_work(string)void` ABI method.
      *
      * @param params The params for the smart contract call
      * @returns The call params
      */
-    registerWork: (params: CallParams<VeritasRegistryArgs['obj']['register_work(string)string'] | VeritasRegistryArgs['tuple']['register_work(string)string']> & {onComplete?: OnApplicationComplete.NoOpOC}) => {
+    registerWork: (params: CallParams<VeritasRegistryArgs['obj']['register_work(string)void'] | VeritasRegistryArgs['tuple']['register_work(string)void']> & {onComplete?: OnApplicationComplete.NoOpOC}) => {
       return this.appClient.params.call(VeritasRegistryParamsFactory.registerWork(params))
     },
 
@@ -449,12 +449,12 @@ export class VeritasRegistryClient {
     },
 
     /**
-     * Makes a call to the VeritasRegistry smart contract using the `register_work(string)string` ABI method.
+     * Makes a call to the VeritasRegistry smart contract using the `register_work(string)void` ABI method.
      *
      * @param params The params for the smart contract call
      * @returns The call transaction
      */
-    registerWork: (params: CallParams<VeritasRegistryArgs['obj']['register_work(string)string'] | VeritasRegistryArgs['tuple']['register_work(string)string']> & {onComplete?: OnApplicationComplete.NoOpOC}) => {
+    registerWork: (params: CallParams<VeritasRegistryArgs['obj']['register_work(string)void'] | VeritasRegistryArgs['tuple']['register_work(string)void']> & {onComplete?: OnApplicationComplete.NoOpOC}) => {
       return this.appClient.createTransaction.call(VeritasRegistryParamsFactory.registerWork(params))
     },
 
@@ -475,14 +475,14 @@ export class VeritasRegistryClient {
     },
 
     /**
-     * Makes a call to the VeritasRegistry smart contract using the `register_work(string)string` ABI method.
+     * Makes a call to the VeritasRegistry smart contract using the `register_work(string)void` ABI method.
      *
      * @param params The params for the smart contract call
      * @returns The call result
      */
-    registerWork: async (params: CallParams<VeritasRegistryArgs['obj']['register_work(string)string'] | VeritasRegistryArgs['tuple']['register_work(string)string']> & SendParams & {onComplete?: OnApplicationComplete.NoOpOC}) => {
+    registerWork: async (params: CallParams<VeritasRegistryArgs['obj']['register_work(string)void'] | VeritasRegistryArgs['tuple']['register_work(string)void']> & SendParams & {onComplete?: OnApplicationComplete.NoOpOC}) => {
       const result = await this.appClient.send.call(VeritasRegistryParamsFactory.registerWork(params))
-      return {...result, return: result.return as unknown as (undefined | VeritasRegistryReturns['register_work(string)string'])}
+      return {...result, return: result.return as unknown as (undefined | VeritasRegistryReturns['register_work(string)void'])}
     },
 
   }
@@ -536,11 +536,11 @@ export class VeritasRegistryClient {
     const resultMappers: Array<undefined | ((x: ABIReturn | undefined) => any)> = []
     return {
       /**
-       * Add a register_work(string)string method call against the VeritasRegistry contract
+       * Add a register_work(string)void method call against the VeritasRegistry contract
        */
-      registerWork(params: CallParams<VeritasRegistryArgs['obj']['register_work(string)string'] | VeritasRegistryArgs['tuple']['register_work(string)string']> & {onComplete?: OnApplicationComplete.NoOpOC}) {
+      registerWork(params: CallParams<VeritasRegistryArgs['obj']['register_work(string)void'] | VeritasRegistryArgs['tuple']['register_work(string)void']> & {onComplete?: OnApplicationComplete.NoOpOC}) {
         promiseChain = promiseChain.then(async () => composer.addAppCallMethodCall(await client.params.registerWork(params)))
-        resultMappers.push((v) => client.decodeReturnValue('register_work(string)string', v))
+        resultMappers.push(undefined)
         return this
       },
       /**
@@ -579,13 +579,13 @@ export class VeritasRegistryClient {
 }
 export type VeritasRegistryComposer<TReturns extends [...any[]] = []> = {
   /**
-   * Calls the register_work(string)string ABI method.
+   * Calls the register_work(string)void ABI method.
    *
    * @param args The arguments for the contract call
    * @param params Any additional parameters for the call
    * @returns The typed transaction composer so you can fluently chain multiple calls or call execute to execute all queued up transactions
    */
-  registerWork(params?: CallParams<VeritasRegistryArgs['obj']['register_work(string)string'] | VeritasRegistryArgs['tuple']['register_work(string)string']>): VeritasRegistryComposer<[...TReturns, VeritasRegistryReturns['register_work(string)string'] | undefined]>
+  registerWork(params?: CallParams<VeritasRegistryArgs['obj']['register_work(string)void'] | VeritasRegistryArgs['tuple']['register_work(string)void']>): VeritasRegistryComposer<[...TReturns, VeritasRegistryReturns['register_work(string)void'] | undefined]>
 
   /**
    * Makes a clear_state call to an existing instance of the VeritasRegistry smart contract.

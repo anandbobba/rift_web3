@@ -1,3 +1,135 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  :root {
+    --background: 222 20% 4%;
+    --foreground: 210 15% 95%;
+    --card: 222 18% 7%;
+    --card-foreground: 210 15% 95%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 11%;
+    --secondary-foreground: 210 12% 78%;
+    --muted: 220 16% 14%;
+    --muted-foreground: 215 12% 50%;
+    --accent: 170 75% 41%;
+    --accent-foreground: 0 0% 100%;
+    --border: 220 15% 13%;
+    --input: 220 15% 13%;
+    --ring: 217 91% 60%;
+    --radius: 0.75rem;
+    --glass-bg: 215 30% 98% / 0.025;
+    --glass-border: 215 30% 98% / 0.06;
+    --glass-hover: 215 30% 98% / 0.05;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    letter-spacing: -0.025em;
+  }
+  .bg-background { background-color: hsl(var(--background)); }
+  .text-foreground { color: hsl(var(--foreground)); }
+  .text-muted-foreground { color: hsl(var(--muted-foreground)); }
+  .bg-secondary { background-color: hsl(var(--secondary)); }
+  .border-border { border-color: hsl(var(--border)); }
+  .text-primary { color: hsl(var(--primary)); }
+  .bg-primary { background-color: hsl(var(--primary)); }
+  .text-primary-foreground { color: hsl(var(--primary-foreground)); }
+}
+
+@layer components {
+  .glass-card {
+    @apply relative rounded-2xl border backdrop-blur-xl;
+    background: hsla(var(--glass-bg));
+    border-color: hsla(var(--glass-border));
+  }
+  .glass-card:hover {
+    background: hsla(var(--glass-hover));
+  }
+  .glow-border { @apply relative; }
+  .glow-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary) / 0.6),
+      transparent 40%,
+      transparent 60%,
+      hsl(var(--primary) / 0.3)
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .ambient-glow {
+    @apply absolute rounded-full blur-3xl pointer-events-none;
+    opacity: 0.07;
+    background: radial-gradient(circle, hsl(var(--primary)) 0%, transparent 70%);
+  }
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.05; }
+    50% { opacity: 0.1; }
+  }
+  .animate-glow-pulse { animation: glow-pulse 6s ease-in-out infinite; }
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .btn-primary-glow {
+    @apply font-semibold px-6 py-3 rounded-xl transition-all duration-300;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3), 0 0 60px hsl(var(--primary) / 0.1);
+  }
+  .btn-primary-glow:hover {
+    box-shadow: 0 0 30px hsl(var(--primary) / 0.35), 0 0 80px hsl(var(--primary) / 0.12);
+    transform: translateY(-1px);
+  }
+  .btn-primary-glow:disabled {
+    opacity: 0.5;
+    transform: none;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .btn-outline-glow {
+    @apply font-medium px-5 py-2.5 rounded-xl transition-all duration-300 bg-transparent;
+    border: 1px solid hsl(var(--primary) / 0.4);
+    color: hsl(var(--primary));
+  }
+  .btn-outline-glow:hover {
+    background-color: hsl(var(--primary) / 0.08);
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.12);
+    transform: translateY(-1px);
+  }
+  .status-dot { @apply w-2.5 h-2.5 rounded-full inline-block; }
+  .status-dot-pending { @apply bg-yellow-400; animation: pulse-dot 1.5s ease-in-out infinite; }
+  .status-dot-success { @apply bg-emerald-400; }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .step-badge {
+    @apply w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+}
