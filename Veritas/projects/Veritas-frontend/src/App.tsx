@@ -3,7 +3,7 @@ import { useWallet } from '@txnlab/use-wallet-react'
 import ConnectWallet from './components/ConnectWallet'
 import algosdk from 'algosdk'
 
-const API     = import.meta.env.VITE_API_URL ?? '/api'
+const API     = import.meta.env.VITE_API_URL ?? 'https://veritas-api-vgus.onrender.com'
 const APP_ID  = 755787017     // Veritas VeritasRegistry on Testnet
 const OWNER   = '64L2PTSAKYUHGR2V63UVIGTYWUKSCQ4HMP7DE35ZKGIG2PJ3XQG7LMCPTY'
 
