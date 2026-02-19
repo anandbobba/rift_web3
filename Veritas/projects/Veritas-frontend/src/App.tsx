@@ -260,51 +260,37 @@ export default function App() {
   const [forensicError, setForensicError] = useState<string | null>(null)
   const [registerPreviewUrl, setRegisterPreviewUrl] = useState<string | null>(null)
 
-  // Wake up the Render backend on mount — free tier spins down after 15 min idle
+  // Poll backend every 6s until it responds, then stop
   useEffect(() => {
-    let cancelled = false
-    const ping = async () => {
-      setBackendWaking(true)
-      for (let i = 0; i < 8; i++) {
-        try {
-          const controller = new AbortController()
-          const timer = setTimeout(() => controller.abort(), 40000) // 40s per attempt
-          const res = await fetch(`${API}/registry`, { signal: controller.signal })
-          clearTimeout(timer)
-          if (!res.ok) throw new Error('not ok')
-          const data = await res.json()
-          if (!cancelled) {
-            setRegistryCount(data.count ?? 0)
-            setBackendReady(true)
-            setBackendWaking(false)
-          }
-          return
-        } catch {
-          if (!cancelled) await new Promise(r => setTimeout(r, 5000))
-        }
-      }
-      if (!cancelled) setBackendWaking(false)
+    const tryFetch = () => {
+      fetch(`${API}/registry`)
+        .then(r => r.json())
+        .then(data => {
+          setRegistryCount(data.count ?? 0)
+          setBackendReady(true)
+          setBackendWaking(false)
+          clearInterval(id)
+        })
+        .catch(() => { /* still waking, keep polling */ })
     }
-    ping()
-    return () => { cancelled = true }
+    setBackendWaking(true)
+    tryFetch() // immediate first attempt
+    const id = setInterval(tryFetch, 6000)
+    return () => clearInterval(id)
   }, [])
 
-  const fetchRegistryCount = useCallback(async () => {
-    try {
-      const res = await fetch(`${API}/registry`)
-      const data = await res.json()
-      setRegistryCount(data.count)
-    } catch { /* ignore */ }
+  const fetchRegistryCount = useCallback(() => {
+    fetch(`${API}/registry`)
+      .then(r => r.json())
+      .then(data => setRegistryCount(data.count ?? 0))
+      .catch(() => { /* ignore */ })
   }, [])
 
   // ── Fetch with auto-retry (handles Render cold start) ────────────────────
   const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, delayMs = 5000): Promise<Response> => {
     for (let i = 0; i < retries; i++) {
       try {
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), 50000) // 50s per attempt
-        const res = await fetch(url, { ...options, signal: controller.signal })
-        clearTimeout(timer)
+        const res = await fetch(url, options)
         if (res.ok) return res
       } catch { /* retry */ }
       if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs))
