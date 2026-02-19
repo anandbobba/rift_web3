@@ -246,7 +246,9 @@ export default function App() {
   const [registerStatus, setRegisterStatus] = useState<StatusState>({ type: 'idle', message: '' })
   const [verifyStatus, setVerifyStatus] = useState<StatusState>({ type: 'idle', message: '' })
   const [verifyDetectionMethod, setVerifyDetectionMethod] = useState<string | null>(null)
-  const [registryCount, setRegistryCount] = useState<number>(0)
+  const [registryCount, setRegistryCount] = useState<number | null>(null)
+  const [backendReady, setBackendReady] = useState(false)
+  const [backendWaking, setBackendWaking] = useState(false)
   const [openWalletModal, setOpenWalletModal] = useState(false)
   const [registerCloudinaryUrl, setRegisterCloudinaryUrl] = useState<string | null>(null)
 
@@ -258,26 +260,57 @@ export default function App() {
   const [forensicError, setForensicError] = useState<string | null>(null)
   const [registerPreviewUrl, setRegisterPreviewUrl] = useState<string | null>(null)
 
+  // Wake up the Render backend on mount — free tier spins down after 15 min idle
+  useEffect(() => {
+    let cancelled = false
+    const ping = async () => {
+      setBackendWaking(true)
+      for (let i = 0; i < 10; i++) {
+        try {
+          const res = await fetch(`${API}/registry`, { signal: AbortSignal.timeout(8000) })
+          const data = await res.json()
+          if (!cancelled) {
+            setRegistryCount(data.count ?? 0)
+            setBackendReady(true)
+            setBackendWaking(false)
+          }
+          return
+        } catch {
+          await new Promise(r => setTimeout(r, 3000))
+        }
+      }
+      if (!cancelled) setBackendWaking(false)
+    }
+    ping()
+    return () => { cancelled = true }
+  }, [])
+
   const fetchRegistryCount = useCallback(async () => {
     try {
       const res = await fetch(`${API}/registry`)
       const data = await res.json()
       setRegistryCount(data.count)
-    } catch {
-      // backend offline
-    }
+    } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => {
-    fetchRegistryCount()
-  }, [fetchRegistryCount])
+  // ── Fetch with auto-retry (handles Render cold start) ────────────────────
+  const fetchWithRetry = async (url: string, options: RequestInit, retries = 4, delayMs = 4000): Promise<Response> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(url, { ...options, signal: AbortSignal.timeout(20000) })
+        if (res.ok) return res
+      } catch { /* retry */ }
+      if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs))
+    }
+    throw new Error('Backend is not responding. Please wait 30 seconds and try again (free hosting cold start).')
+  }
 
   // ── Registry actions ──────────────────────────────────────────────────────
 
   const registerArtwork = async () => {
     if (!activeAddress) return alert('Please connect your Pera Wallet first.')
     if (!registerFile) return alert('Please select an image to register.')
-    setRegisterStatus({ type: 'loading', message: 'Step 1/3 — Computing 64-bit pHash via forensic pipeline...' })
+    setRegisterStatus({ type: 'loading', message: 'Step 1/3 — Computing 64-bit pHash (waking backend if needed)...' })
 
     try {
       // ── Step 1: Compute pHash on backend (Median Blur → DCT → Bitmask) ─────
@@ -285,7 +318,7 @@ export default function App() {
       formData.append('file', registerFile)
       let hashData: Record<string, string>
       try {
-        const hashRes = await fetch(`${API}/compute-hash`, { method: 'POST', body: formData })
+        const hashRes = await fetchWithRetry(`${API}/compute-hash`, { method: 'POST', body: formData })
         hashData = await hashRes.json()
       } catch {
         throw new Error('Could not reach the backend. It may be waking up — please wait 30 seconds and try again.')
@@ -373,7 +406,7 @@ export default function App() {
     formData.append('file', verifyFile)
 
     try {
-      const res = await fetch(`${API}/verify`, { method: 'POST', body: formData })
+      const res = await fetchWithRetry(`${API}/verify`, { method: 'POST', body: formData })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
 
@@ -406,7 +439,7 @@ export default function App() {
     formData.append('file', forensicFile)
 
     try {
-      const res = await fetch(`${API}/analyze`, { method: 'POST', body: formData })
+      const res = await fetchWithRetry(`${API}/analyze`, { method: 'POST', body: formData })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       if (!data.phash_binary || !data.phash_hex || !data.dct_heatmap) {
@@ -425,6 +458,14 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'rgb(9 9 11)', color: 'rgb(250 250 250)' }}>
 
+      {/* ── Waking banner ── */}
+      {backendWaking && (
+        <div className="fixed top-14 left-0 right-0 z-40 flex items-center justify-center gap-2 px-4 py-2 text-xs" style={{ backgroundColor: 'rgb(161 98 7 / 0.15)', borderBottom: '1px solid rgb(161 98 7 / 0.3)', color: 'rgb(253 224 71)' }}>
+          <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          Backend is waking up (free hosting cold start) — this takes ~30 seconds, please wait…
+        </div>
+      )}
+
       {/* ── Navbar ── */}
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md" style={{ backgroundColor: 'rgb(9 9 11 / 0.85)', borderBottom: '1px solid rgb(39 39 42)' }}>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
@@ -434,8 +475,8 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-2 text-xs mono px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)', color: 'rgb(161 161 170)' }}>
-              <span className="dot" style={{ backgroundColor: 'rgb(34 197 94)' }} />
-              <span>{registryCount} registered</span>
+              <span className="dot" style={{ backgroundColor: backendReady ? 'rgb(34 197 94)' : 'rgb(234 179 8)' }} />
+              <span>{backendWaking ? 'Connecting…' : registryCount === null ? '—' : `${registryCount} registered`}</span>
             </div>
             {activeAddress ? (
               <button onClick={() => setOpenWalletModal(true)} className="btn-wallet">
