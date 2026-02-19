@@ -409,6 +409,9 @@ export default function App() {
       const res = await fetch(`${API}/analyze`, { method: 'POST', body: formData })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
+      if (!data.phash_binary || !data.phash_hex || !data.dct_heatmap) {
+        throw new Error('Backend returned incomplete data. It may still be waking up — please try again in a moment.')
+      }
       setForensicData(data as ForensicData)
     } catch (e: unknown) {
       setForensicError(e instanceof Error ? e.message : 'Could not reach the backend. Please try again in a moment.')
@@ -759,7 +762,7 @@ export default function App() {
                     <div className="mono" style={{ fontSize: '0.6875rem', lineHeight: 1.7, wordBreak: 'break-all' }}>
                       {Array.from({ length: 8 }, (_, row) => (
                         <span key={row} style={{ marginRight: 6, display: 'inline-block' }}>
-                          {forensicData.phash_binary.slice(row * 8, row * 8 + 8).split('').map((b, col) => (
+                          {(forensicData.phash_binary ?? '').slice(row * 8, row * 8 + 8).split('').map((b, col) => (
                             <span key={col} style={{ color: b === '1' ? 'rgb(250,250,250)' : 'rgb(63,63,70)' }}>{b}</span>
                           ))}
                         </span>
