@@ -6,7 +6,24 @@ import io
 import base64
 import os
 import numpy as np
-from scipy.fft import dctn
+
+
+def dctn_numpy(arr: np.ndarray) -> np.ndarray:
+    """2D Type-II DCT with ortho normalization — replaces scipy.fft.dctn."""
+    def _dct1d(x: np.ndarray) -> np.ndarray:
+        N = len(x)
+        v = np.empty(2 * N)
+        v[:N] = x
+        v[N:] = x[::-1]
+        V = np.fft.rfft(v)[:N]
+        k = np.arange(N, dtype=float)
+        phase = np.exp(-1j * np.pi * k / (2.0 * N))
+        result = np.real(phase * V)
+        result[0] /= np.sqrt(4.0 * N)
+        result[1:] /= np.sqrt(2.0 * N)
+        return result
+    tmp = np.apply_along_axis(_dct1d, 1, arr.astype(float))
+    return np.apply_along_axis(_dct1d, 0, tmp)
 import hashlib
 import requests
 import cloudinary
@@ -181,7 +198,7 @@ async def analyze_artwork(file: UploadFile = File(...)):
         gray_original_b64 = base64.b64encode(buf2.getvalue()).decode()
 
         arr = np.array(gray, dtype=float)
-        dct_matrix = dctn(arr, norm="ortho")
+        dct_matrix = dctn_numpy(arr)
         low_freq = dct_matrix[:8, :8]
         coeffs_full = low_freq.flatten()
         median_val = float(np.median(coeffs_full[1:]))
