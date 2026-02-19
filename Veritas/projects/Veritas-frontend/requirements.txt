@@ -1,0 +1,9 @@
+fastapi
+python-multipart
+imagehash
+Pillow
+numpy
+scipy
+algosdk
+cloudinary
+python-dotenv

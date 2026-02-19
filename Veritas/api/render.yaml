@@ -1,7 +1,7 @@
 services:
   - type: web
     name: veritas-api
-    env: python
+    runtime: python
     region: oregon
     plan: free
     rootDir: Veritas/api
