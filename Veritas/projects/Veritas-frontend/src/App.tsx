@@ -325,26 +325,24 @@ export default function App() {
       setRegisterStatus({ type: 'loading', message: `Step 2/3 — pHash computed: ${phash}. Building on-chain transaction...` })
 
       // ── Step 2: Build ABI call to register_work(phash) ───────────────────
-      // ARC4 ABI method selector for register_work(string)void
       const METHOD_SELECTOR = algosdk.ABIMethod.fromSignature('register_work(string)void')
 
-      const sp = await algodClient.getTransactionParams().do()
+      // Proxy AlgoNode calls through our backend to avoid browser 403 on some regions
+      const spRes = await fetch(`${API}/algod/params`)
+      const sp = await spRes.json()
 
-      // Box reference: algopy BoxMap uses field name as prefix → "registered_hashes" + phash bytes
       const boxKey = new TextEncoder().encode('registered_hashes' + phash)
 
-      // ── MBR payment: fund the app account to cover box storage cost ──────
-      // Box MBR = 2500 + 400 * (key_len + value_len), base account MBR = 100_000 microALGO
       const appAddress = algosdk.getApplicationAddress(APP_ID)
-      const appInfo = await algodClient.accountInformation(appAddress).do()
+      const appInfoRes = await fetch(`${API}/algod/account/${appAddress}`)
+      const appInfo = await appInfoRes.json()
       const appBalance = Number(appInfo['amount'] ?? 0)
-      const boxMbr = 2500 + 400 * (boxKey.length + 32)   // 32 bytes for Account value
+      const boxMbr = 2500 + 400 * (boxKey.length + 32)
       const baseAccountMbr = 100_000
       const mbrNeeded = Math.max(0, baseAccountMbr + boxMbr - appBalance)
 
       const atc = new algosdk.AtomicTransactionComposer()
 
-      // Include payment to app account if MBR not yet covered
       if (mbrNeeded > 0) {
         const payTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
           sender: activeAddress,
@@ -367,7 +365,6 @@ export default function App() {
 
       setRegisterStatus({ type: 'loading', message: 'Step 3/3 — Please approve the transaction in Pera Wallet...' })
 
-      // ── Step 3: Sign via Pera Wallet and submit to Testnet ───────────────
       const result = await atc.execute(algodClient, 4)
       const txId = result.txIDs[0]
 

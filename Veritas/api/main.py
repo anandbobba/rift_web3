@@ -245,6 +245,26 @@ async def root():
     return {"status": "ok", "message": "Veritas Protocol API is running", "endpoints": ["/registry", "/compute-hash", "/verify", "/analyze"]}
 
 
+@app.get("/algod/params")
+async def algod_params():
+    """Proxy: fetch suggested transaction params from AlgoNode (avoids browser 403)."""
+    try:
+        r = requests.get(f"{ALGOD_URL}/v2/transactions/params", timeout=10)
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/algod/account/{address}")
+async def algod_account(address: str):
+    """Proxy: fetch account info from AlgoNode (avoids browser 403)."""
+    try:
+        r = requests.get(f"{ALGOD_URL}/v2/accounts/{address}", timeout=10)
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/registry")
 async def get_registry():
     """Returns registry read live from Algorand Testnet boxes."""
