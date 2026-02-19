@@ -4,7 +4,6 @@ python-multipart
 imagehash
 Pillow
 numpy
-scipy
-algosdk
+requests
 cloudinary
 python-dotenv

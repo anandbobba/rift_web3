@@ -5,8 +5,9 @@ import imagehash
 import io
 import base64
 import os
+import hashlib
+import requests
 import numpy as np
-from scipy.fft import dctn
 from pathlib import Path
 from dotenv import load_dotenv
 import cloudinary
@@ -18,17 +19,33 @@ load_dotenv(Path(__file__).parent / '.env')
 # Cloudinary — configured via CLOUDINARY_URL in .env
 cloudinary.config(cloudinary_url=os.getenv("CLOUDINARY_URL", ""))
 
-# Algorand Testnet — read contract boxes for live registry
-from algosdk.v2client import algod, indexer
-
 # ── Testnet config ────────────────────────────────────────────────────────────
-ALGOD_URL   = "https://testnet-api.algonode.cloud"
-INDEXER_URL = "https://testnet-idx.algonode.cloud"
-ALGOD_TOKEN = ""          # AlgoNode public endpoints need no token
-APP_ID      = 755787017   # Veritas VeritasRegistry App ID on Testnet
+ALGOD_URL = "https://testnet-api.algonode.cloud"
+APP_ID    = 755787017   # Veritas VeritasRegistry App ID on Testnet
 
-algod_client    = algod.AlgodClient(ALGOD_TOKEN, ALGOD_URL)
-indexer_client  = indexer.IndexerClient(ALGOD_TOKEN, INDEXER_URL)
+
+def encode_algorand_address(pk_bytes: bytes) -> str:
+    """Encode 32-byte public key as Algorand address (base32 + sha512/256 checksum)."""
+    chksum = hashlib.new("sha512_256", pk_bytes).digest()[-4:]
+    return base64.b32encode(pk_bytes + chksum).decode().upper().rstrip("=")
+
+
+def dctn_numpy(arr: np.ndarray) -> np.ndarray:
+    """2D Type-II DCT with ortho normalization — replaces scipy.fft.dctn."""
+    def _dct1d(x: np.ndarray) -> np.ndarray:
+        N = len(x)
+        v = np.empty(2 * N)
+        v[:N] = x
+        v[N:] = x[::-1]
+        V = np.fft.rfft(v)[:N]
+        k = np.arange(N, dtype=float)
+        phase = np.exp(-1j * np.pi * k / (2.0 * N))
+        result = np.real(phase * V)
+        result[0] /= np.sqrt(4.0 * N)
+        result[1:] /= np.sqrt(2.0 * N)
+        return result
+    tmp = np.apply_along_axis(_dct1d, 1, arr.astype(float))
+    return np.apply_along_axis(_dct1d, 0, tmp)
 
 app = FastAPI(title="Veritas Protocol API — Testnet")
 
@@ -68,38 +85,28 @@ def compute_phash(img: Image.Image) -> imagehash.ImageHash:
     return imagehash.phash(denoise(img))
 
 
-def fetch_registry_from_chain() -> dict[str, str]:
-    """
-    Read all registered pHashes directly from the Algorand Testnet.
-    The VeritasRegistry contract stores: BoxMap(String -> Account)
-    Box key   = the hex pHash string (UTF-8 bytes)
-    Box value = 32-byte Algorand public key (owner address)
-    Returns dict: { phash_hex: owner_address }
-    """
-    registry: dict[str, str] = {}
+def fetch_registry_from_chain() -> dict:
+    """Read all registered pHashes directly from Algorand Testnet via REST API."""
+    registry: dict = {}
     try:
-        boxes = algod_client.application_boxes(APP_ID)
-        box_list = boxes.get("boxes", [])
+        resp = requests.get(f"{ALGOD_URL}/v2/applications/{APP_ID}/boxes", timeout=10)
+        box_list = resp.json().get("boxes", [])
         print(f"[CHAIN] Found {len(box_list)} box(es) in App {APP_ID}")
 
         for box_ref in box_list:
-            # box_ref["name"] is base64-encoded box name (= the pHash hex string)
-            import base64 as _b64
             box_name_b64 = box_ref["name"]
-            box_name_bytes = _b64.b64decode(box_name_b64)
-            raw_key = box_name_bytes.decode("utf-8")
-            # algopy BoxMap prefixes every key with the field name
+            box_name_bytes = base64.b64decode(box_name_b64)
+            raw_key = box_name_bytes.decode("utf-8", errors="replace")
             BOX_PREFIX = "registered_hashes"
             phash_hex = raw_key[len(BOX_PREFIX):] if raw_key.startswith(BOX_PREFIX) else raw_key
 
-            # Fetch box value = 32-byte account public key
-            box_data = algod_client.application_box_by_name(APP_ID, box_name_bytes)
-            value_b64 = box_data.get("value", "")
-            value_bytes = _b64.b64decode(value_b64)
-
-            # Decode 32-byte public key → Algorand address
-            from algosdk import encoding
-            owner_address = encoding.encode_address(value_bytes)
+            box_resp = requests.get(
+                f"{ALGOD_URL}/v2/applications/{APP_ID}/box",
+                params={"name": f"b64:{box_name_b64}"},
+                timeout=10,
+            )
+            value_bytes = base64.b64decode(box_resp.json().get("value", ""))
+            owner_address = encode_algorand_address(value_bytes)
 
             registry[phash_hex] = owner_address
             print(f"[CHAIN] Loaded: {phash_hex[:8]}... -> {owner_address[:8]}...")
@@ -276,7 +283,7 @@ async def analyze_artwork(file: UploadFile = File(...)):
         pixels = list(gray.getdata())
 
         arr = np.array(gray, dtype=float)
-        dct_matrix = dctn(arr, norm="ortho")
+        dct_matrix = dctn_numpy(arr)
         low_freq = dct_matrix[:8, :8]
         coeffs_full = low_freq.flatten()
         coeffs_no_dc = coeffs_full[1:]
