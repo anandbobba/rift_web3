@@ -329,7 +329,17 @@ export default function App() {
 
       // Proxy AlgoNode calls through our backend to avoid browser 403 on some regions
       const spRes = await fetch(`${API}/algod/params`)
-      const sp = await spRes.json()
+      const spRaw = await spRes.json()
+      // Map AlgoNode field names → algosdk SuggestedParams shape
+      const sp = {
+        fee: spRaw['fee'] ?? 0,
+        flatFee: false,
+        firstValid: spRaw['last-round'],
+        lastValid: spRaw['last-round'] + 1000,
+        genesisHash: spRaw['genesis-hash'],
+        genesisID: spRaw['genesis-id'],
+        minFee: spRaw['min-fee'] ?? 1000,
+      }
 
       const boxKey = new TextEncoder().encode('registered_hashes' + phash)
 
