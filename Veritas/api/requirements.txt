@@ -6,3 +6,5 @@ Pillow
 numpy
 scipy
 algosdk
+cloudinary
+python-dotenv

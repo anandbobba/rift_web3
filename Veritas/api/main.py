@@ -4,8 +4,19 @@ from PIL import Image, ImageFilter
 import imagehash
 import io
 import base64
+import os
 import numpy as np
 from scipy.fft import dctn
+from pathlib import Path
+from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+
+# Load .env from the same directory as this file, regardless of cwd
+load_dotenv(Path(__file__).parent / '.env')
+
+# Cloudinary — configured via CLOUDINARY_URL in .env
+cloudinary.config(cloudinary_url=os.getenv("CLOUDINARY_URL", ""))
 
 # Algorand Testnet — read contract boxes for live registry
 from algosdk.v2client import algod, indexer
@@ -112,7 +123,23 @@ async def compute_hash(file: UploadFile = File(...)):
         phash = compute_phash(img)
         phash_str = str(phash)
         print(f"[HASH] Computed pHash: {phash_str}")
-        return {"phash": phash_str, "status": "ok"}
+
+        # ── Upload original image to Cloudinary ────────────────────────────
+        cloudinary_url = ""
+        try:
+            upload_result = cloudinary.uploader.upload(
+                io.BytesIO(data),
+                folder="veritas",
+                public_id=f"artwork_{phash_str}",
+                resource_type="image",
+                overwrite=False,
+            )
+            cloudinary_url = upload_result.get("secure_url", "")
+            print(f"[CLOUDINARY] Uploaded: {cloudinary_url}")
+        except Exception as ce:
+            print(f"[CLOUDINARY] Upload error (non-fatal): {ce}")
+
+        return {"phash": phash_str, "status": "ok", "cloudinary_url": cloudinary_url}
     except Exception as e:
         return {"error": str(e)}
 

@@ -3,7 +3,7 @@ import { useWallet } from '@txnlab/use-wallet-react'
 import ConnectWallet from './components/ConnectWallet'
 import algosdk from 'algosdk'
 
-const API     = 'http://localhost:8000'
+const API     = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const APP_ID  = 755787017     // Veritas VeritasRegistry on Testnet
 const OWNER   = '64L2PTSAKYUHGR2V63UVIGTYWUKSCQ4HMP7DE35ZKGIG2PJ3XQG7LMCPTY'
 
@@ -30,40 +30,211 @@ const PIPELINE_STEPS = [
   {
     num: '01',
     title: 'Adversarial Noise Defense',
-    color: 'text-blue-400',
     desc: 'A 3×3 Median Blur strips imperceptible high-frequency adversarial perturbations before any hashing begins. Invisible digital noise that tries to alter the hash without changing the visible artwork is eliminated here.',
   },
   {
     num: '02',
     title: 'Grayscale + 32×32 Resize',
-    color: 'text-slate-300',
     desc: 'Convert to grayscale and resize to 32×32. This removes colour noise and compression artefacts, leaving only structural luminance data — the raw "skeleton" of the artwork.',
   },
   {
     num: '03',
     title: 'Discrete Cosine Transform',
-    color: 'text-amber-400',
     desc: '2D DCT converts 1024 pixel values into 1024 frequency coefficients. Low-frequency coefficients (top-left) capture large structural shapes; high-frequency ones encode fine detail and noise — which we discard.',
   },
   {
     num: '04',
     title: 'Low-Pass Filter (8×8)',
-    color: 'text-orange-400',
     desc: 'Keep only the top-left 8×8 block — 64 coefficients representing the lowest frequencies. Cropping, colour grading, JPEG compression, and minor edits all live in the HIGH frequencies, which are thrown away here.',
   },
   {
     num: '05',
     title: 'Median Threshold → 64-bit Hash',
-    color: 'text-emerald-400',
     desc: 'Compute the median of the 64 DCT coefficients. Each bit = 1 if above median, 0 if below. The result is a 64-bit structural fingerprint invariant to resizing, colour changes, and compression.',
   },
   {
     num: '06',
     title: '8-Way Symmetry Invariance',
-    color: 'text-violet-400',
     desc: 'During verification, all 8 orientations of the suspect image are tested: original + 3 rotations (90°/180°/270°) + their 4 mirrored counterparts. No rotation or flip can bypass the registry.',
   },
 ]
+
+// ── Perceptual-hash colour scale (blue → yellow) ────────────────────────
+const dctColor = (v: number): string => {
+  const r = Math.round((v / 255) * 255)
+  const g = Math.round((v / 255) * 180)
+  const b = Math.round(255 - (v / 255) * 255)
+  return `rgb(${r},${g},${b})`
+}
+
+// ── Forensic Visualizer sub-components ──────────────────────────────────
+
+function RightArrow() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '0 12px', flexShrink: 0 }}>
+      <svg width="52" height="16" viewBox="0 0 52 16" fill="none">
+        <line x1="0" y1="8" x2="40" y2="8"
+          stroke="rgb(63 63 70)" strokeWidth="1.5" strokeDasharray="4 3"
+          style={{ animation: 'flow-right 0.7s linear infinite' }} />
+        <polyline points="34,3 44,8 34,13"
+          stroke="rgb(63 63 70)" strokeWidth="1.5" fill="none"
+          strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  )
+}
+
+function DownConnector() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0' }}>
+      <svg width="20" height="40" viewBox="0 0 20 40" fill="none">
+        <line x1="10" y1="0" x2="10" y2="30"
+          stroke="rgb(63 63 70)" strokeWidth="1.5" strokeDasharray="4 3"
+          style={{ animation: 'flow-down 0.7s linear infinite' }} />
+        <polyline points="4,25 10,34 16,25"
+          stroke="rgb(63 63 70)" strokeWidth="1.5" fill="none"
+          strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  )
+}
+
+function ForensicStepCard({ num, title, tooltip, children, delay = 0 }: {
+  num: string; title: string; tooltip: string; children: React.ReactNode; delay?: number
+}) {
+  const [showTip, setShowTip] = useState(false)
+  return (
+    <div
+      className="card p-5"
+      style={{ animation: `fade-in 0.4s ease ${delay}s both` }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span className="step-num">{num}</span>
+        <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{title}</span>
+        <span
+          className="mono"
+          style={{
+            marginLeft: 'auto', fontSize: '0.625rem', letterSpacing: '0.04em',
+            cursor: 'help', userSelect: 'none',
+            padding: '2px 7px', borderRadius: 5,
+            color: showTip ? 'rgb(147 197 253)' : 'rgb(63 63 70)',
+            background: showTip ? 'rgb(59 130 246 / 0.1)' : 'rgb(39 39 42 / 0.5)',
+            border: `1px solid ${showTip ? 'rgb(59 130 246 / 0.25)' : 'rgb(63 63 70 / 0.35)'}`,
+            transition: 'color 0.18s, background 0.18s, border-color 0.18s',
+          }}
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+        >ℹ theory</span>
+      </div>
+      {/* Theory tooltip — slides in only when hovering the ℹ badge */}
+      <div style={{
+        maxHeight: showTip ? '200px' : '0px', overflow: 'hidden',
+        opacity: showTip ? 1 : 0, marginBottom: showTip ? 14 : 0,
+        transition: 'max-height 0.32s ease, opacity 0.2s ease, margin-bottom 0.25s ease',
+      }}>
+        <div style={{
+          fontSize: '0.75rem', color: 'rgb(161 161 170)', lineHeight: 1.7,
+          padding: '10px 13px', background: 'rgb(9 9 11)',
+          borderRadius: 8, border: '1px solid rgb(59 130 246 / 0.12)',
+        }}>
+          {tooltip}
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ForensicImgBox({ label, src }: { label: string; src: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid rgb(39 39 42)', background: '#000' }}>
+        <img src={src} alt={label} style={{ width: 160, height: 160, imageRendering: 'pixelated', display: 'block' }} />
+      </div>
+      <span className="mono" style={{ fontSize: '0.6875rem', color: 'rgb(113 113 122)' }}>{label}</span>
+    </div>
+  )
+}
+
+function DCTHeatmapGrid({ data }: { data: number[] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)',
+        gap: 2, width: 160, height: 160,
+        borderRadius: 10, overflow: 'hidden', border: '1px solid rgb(39 39 42)',
+      }}>
+        {data.map((v, i) => (
+          <div
+            key={i}
+            title={`[${Math.floor(i / 8)},${i % 8}] = ${v.toFixed(1)}`}
+            style={{ backgroundColor: dctColor(v), animation: `fade-in 0.25s ease ${i * 0.006}s both` }}
+          />
+        ))}
+      </div>
+      <span className="mono" style={{ fontSize: '0.6875rem', color: 'rgb(113 113 122)' }}>DCT Heatmap</span>
+    </div>
+  )
+}
+
+function BitmaskGrid({ data }: { data: number[] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3, width: 160, height: 160 }}>
+        {data.map((bit, i) => (
+          <div
+            key={i}
+            title={`bit[${i}] = ${bit}`}
+            style={{
+              backgroundColor: bit === 1 ? 'rgba(59,130,246,0.45)' : 'rgb(18,18,20)',
+              border: `1px solid ${bit === 1 ? 'rgba(59,130,246,0.3)' : 'rgb(39,39,42)'}`,
+              borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              animation: `bit-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) ${i * 0.013}s both`,
+            }}
+          >
+            <span className="mono" style={{ fontSize: 9, color: bit === 1 ? 'rgb(191,219,254)' : 'rgb(63,63,70)' }}>{bit}</span>
+          </div>
+        ))}
+      </div>
+      <span className="mono" style={{ fontSize: '0.6875rem', color: 'rgb(113 113 122)' }}>64-bit Fingerprint</span>
+    </div>
+  )
+}
+
+function DCTBarGraph({ data }: { data: number[] }) {
+  const maxVal = Math.max(...data, 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{
+        position: 'relative',
+        display: 'flex', alignItems: 'flex-end', gap: 0.5,
+        height: 64, width: 160, padding: '0 3px',
+        background: 'rgb(9,9,11)', borderRadius: 8, border: '1px solid rgb(39,39,42)', overflow: 'hidden',
+      }}>
+        {/* Moving scan line — gives the graph a live/dynamic feel */}
+        <div style={{
+          position: 'absolute', top: 0, bottom: 0, width: 2, zIndex: 2, pointerEvents: 'none',
+          background: 'linear-gradient(to bottom, transparent 0%, rgb(250 250 250 / 0.45) 50%, transparent 100%)',
+          animation: 'scan 2.6s ease-in-out infinite',
+        }} />
+        {data.map((v, i) => (
+          <div
+            key={i}
+            title={`coeff[${i}] = ${v.toFixed(1)}`}
+            style={{
+              flex: 1, minHeight: 2, borderRadius: '2px 2px 0 0',
+              height: `${Math.max((v / maxVal) * 100, 2)}%`,
+              backgroundColor: dctColor(v),
+              transformOrigin: 'bottom',
+              animation: `bar-rise 0.7s cubic-bezier(0.16,1,0.3,1) ${i * 0.01}s both`,
+            }}
+          />
+        ))}
+      </div>
+      <span className="mono" style={{ fontSize: '0.6875rem', color: 'rgb(63,63,70)', textAlign: 'center' }}>64 coefficients</span>
+    </div>
+  )
+}
 
 export default function App() {
   const { activeAddress, transactionSigner, algodClient } = useWallet()
@@ -77,12 +248,15 @@ export default function App() {
   const [verifyDetectionMethod, setVerifyDetectionMethod] = useState<string | null>(null)
   const [registryCount, setRegistryCount] = useState<number>(0)
   const [openWalletModal, setOpenWalletModal] = useState(false)
+  const [registerCloudinaryUrl, setRegisterCloudinaryUrl] = useState<string | null>(null)
 
   // --- Forensic tab state ---
   const [forensicFile, setForensicFile] = useState<File | null>(null)
+  const [forensicOriginalUrl, setForensicOriginalUrl] = useState<string | null>(null)
   const [forensicData, setForensicData] = useState<ForensicData | null>(null)
   const [forensicLoading, setForensicLoading] = useState(false)
   const [forensicError, setForensicError] = useState<string | null>(null)
+  const [registerPreviewUrl, setRegisterPreviewUrl] = useState<string | null>(null)
 
   const fetchRegistryCount = useCallback(async () => {
     try {
@@ -113,6 +287,7 @@ export default function App() {
       const hashData = await hashRes.json()
       if (hashData.error) throw new Error(`Hash error: ${hashData.error}`)
       const phash: string = hashData.phash
+      if (hashData.cloudinary_url) setRegisterCloudinaryUrl(hashData.cloudinary_url)
 
       setRegisterStatus({ type: 'loading', message: `Step 2/3 — pHash computed: ${phash}. Building on-chain transaction...` })
 
@@ -171,7 +346,11 @@ export default function App() {
 
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (msg.toLowerCase().includes('already')) {
+      const isDuplicate =
+        msg.toLowerCase().includes('already') ||
+        msg.toLowerCase().includes('assert failed') ||
+        msg.toLowerCase().includes('logic eval error')
+      if (isDuplicate) {
         setRegisterStatus({ type: 'error', message: `Already registered on-chain. This pHash already exists in App #${APP_ID}.` })
       } else {
         setRegisterStatus({ type: 'error', message: msg })
@@ -232,253 +411,236 @@ export default function App() {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  const statusColors: Record<StatusType, string> = {
-    idle: '',
-    loading: 'bg-gray-700 border-gray-500 text-gray-300 animate-pulse',
-    registered: 'bg-green-900/60 border-green-500 text-green-100',
-    original: 'bg-blue-900/60 border-blue-400 text-blue-100',
-    plagiarism: 'bg-red-900/70 border-red-500 text-red-100',
-    clear: 'bg-emerald-900/60 border-emerald-400 text-emerald-100',
-    error: 'bg-yellow-900/60 border-yellow-500 text-yellow-100',
-  }
-
-  // Interpolate a normalised value (0-255) to a blue→yellow heatmap colour
-  const dctColor = (v: number) => {
-    const r = Math.round((v / 255) * 255)
-    const g = Math.round((v / 255) * 180)
-    const b = Math.round(255 - (v / 255) * 255)
-    return `rgb(${r},${g},${b})`
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background text-foreground relative overflow-hidden" style={{ backgroundColor: 'hsl(222 20% 4%)' }}>
-      {/* Ambient glow lights */}
-      <div className="ambient-glow w-[600px] h-[600px] -top-40 -left-40 animate-glow-pulse" />
-      <div className="ambient-glow w-[500px] h-[500px] top-1/3 -right-32 animate-glow-pulse" style={{ animationDelay: '2s' }} />
-      <div className="ambient-glow w-[400px] h-[400px] -bottom-20 left-1/3 animate-glow-pulse" style={{ animationDelay: '1s' }} />
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'rgb(9 9 11)', color: 'rgb(250 250 250)' }}>
 
       {/* ── Navbar ── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl" style={{ borderBottom: '1px solid hsl(220 15% 13% / 0.5)', backgroundColor: 'hsl(222 20% 4% / 0.85)' }}>
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'hsl(217 91% 60% / 0.15)', border: '1px solid hsl(217 91% 60% / 0.25)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="hsl(217, 91%, 60%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-            <div>
-              <div className="text-lg font-bold tracking-tight font-heading" style={{ color: 'hsl(0 0% 95%)' }}>
-                VERITAS <span className="font-light text-sm" style={{ color: 'hsl(217 91% 60%)' }}>Protocol</span>
-              </div>
-              <p className="text-xs -mt-0.5" style={{ color: 'hsl(215 12% 50%)' }}>Decentralized Copyright Registry on Algorand</p>
-            </div>
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md" style={{ backgroundColor: 'rgb(9 9 11 / 0.85)', borderBottom: '1px solid rgb(39 39 42)' }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgb(250 250 250)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+            <span className="text-sm font-semibold tracking-tight">Veritas Protocol</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs px-3 py-1 rounded-full" style={{ color: 'hsl(215 12% 50%)', backgroundColor: 'hsl(220 16% 10%)', border: '1px solid hsl(220 15% 14%)' }}>
-              Registry: <strong style={{ color: 'hsl(0 0% 95%)' }}>{registryCount}</strong> work{registryCount !== 1 ? 's' : ''}
-            </span>
-            <button onClick={() => setOpenWalletModal(true)} className="btn-outline-glow text-sm">
-              {activeAddress ? `${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}` : 'Connect Wallet'}
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 text-xs mono px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)', color: 'rgb(161 161 170)' }}>
+              <span className="dot" style={{ backgroundColor: 'rgb(34 197 94)' }} />
+              <span>{registryCount} registered</span>
+            </div>
+            {activeAddress ? (
+              <button onClick={() => setOpenWalletModal(true)} className="btn-wallet">
+                <span className="dot" style={{ backgroundColor: 'rgb(34 197 94)' }} />
+                <span className="hidden sm:inline">{activeAddress.slice(0, 6)}…{activeAddress.slice(-4)}</span>
+                <span className="sm:hidden">{activeAddress.slice(0, 4)}…</span>
+              </button>
+            ) : (
+              <button onClick={() => setOpenWalletModal(true)} className="btn-secondary" style={{ fontSize: '0.8125rem', padding: '0.5rem 0.875rem' }}>
+                <span className="hidden sm:inline">Connect Wallet</span>
+                <span className="sm:hidden">Connect</span>
+              </button>
+            )}
           </div>
         </div>
       </nav>
 
       <ConnectWallet openModal={openWalletModal} closeModal={() => setOpenWalletModal(false)} />
 
-      {/* ── Tab Bar ── */}
-      <div className="max-w-5xl mx-auto px-6 pt-20 flex gap-1 pb-0 relative z-10" style={{ borderBottom: '1px solid hsl(220 15% 13%)' }}>
-        <button
-          onClick={() => setActiveTab('registry')}
-          className="px-5 py-2.5 rounded-t-lg text-sm font-semibold border-b-2 transition-all duration-200"
-          style={activeTab === 'registry'
-            ? { borderColor: 'hsl(217 91% 60%)', color: 'hsl(217 91% 60%)', backgroundColor: 'hsl(222 18% 7%)' }
-            : { borderColor: 'transparent', color: 'hsl(215 12% 50%)' }}
-        >
-          Register & Verify
-        </button>
-        <button
-          onClick={() => setActiveTab('forensic')}
-          className="px-5 py-2.5 rounded-t-lg text-sm font-semibold border-b-2 transition-all duration-200"
-          style={activeTab === 'forensic'
-            ? { borderColor: 'hsl(271 81% 65%)', color: 'hsl(271 81% 75%)', backgroundColor: 'hsl(0 0% 7%)' }
-            : { borderColor: 'transparent', color: 'hsl(0 0% 55%)' }}
-        >
-          Forensic Visualizer
-        </button>
-        <button
-          onClick={() => setActiveTab('architecture')}
-          className="px-5 py-2.5 rounded-t-lg text-sm font-semibold border-b-2 transition-all duration-200"
-          style={activeTab === 'architecture'
-            ? { borderColor: 'hsl(160 60% 45%)', color: 'hsl(160 60% 55%)', backgroundColor: 'hsl(0 0% 7%)' }
-            : { borderColor: 'transparent', color: 'hsl(215 12% 50%)' }}
-        >
-          Architecture
-        </button>
+      {/* ── Tabs ── */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-16" style={{ borderBottom: '1px solid rgb(39 39 42)' }}>
+        <div className="flex gap-0 overflow-x-auto scrollbar-hide">
+          {([
+            { key: 'registry' as Tab, label: 'Register & Verify' },
+            { key: 'forensic' as Tab, label: 'Forensic' },
+            { key: 'architecture' as Tab, label: 'Architecture' },
+          ]).map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)} className={`tab whitespace-nowrap ${activeTab === t.key ? 'tab-active' : ''}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
           TAB 1 — Registry
       ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'registry' && (
-        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6 relative z-10" style={{ animation: 'fade-in-up 0.5s ease-out' }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8 sm:space-y-10" style={{ animation: 'fade-in 0.35s ease' }}>
+
+          {/* Hero */}
+          <div className="text-center space-y-3">
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+              Protect your creative work
+            </h1>
+            <p className="text-sm max-w-lg mx-auto" style={{ color: 'rgb(161 161 170)' }}>
+              Register a 64-bit perceptual fingerprint on Algorand. Detects copies
+              even after cropping, rotation, compression, or colour manipulation.
+            </p>
+          </div>
+
           {/* How it works */}
-          <div className="grid grid-cols-3 gap-4 text-center text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { step: '1', title: 'Artist Registers', desc: 'Upload your original artwork. A 64-bit pHash visual fingerprint is generated and stored on Algorand.' },
-              { step: '2', title: 'Suspect Image Uploaded', desc: 'Anyone can upload a suspect image to check if it visually matches a registered original.' },
-              { step: '3', title: '8-Way Symmetry Scan', desc: 'All 8 orientations tested (4 rotations × 2 mirror states). Hamming Distance ≤ 10 across any orientation = plagiarism detected.' },
-            ].map(({ step, title, desc }) => (
-              <div key={step} className="glass-card glow-border p-4">
-                <div className="step-badge mx-auto mb-2" style={{ backgroundColor: 'hsl(217 91% 60% / 0.12)' }}><span className="text-blue-400">{step}</span></div>
-                <div className="font-bold text-xs uppercase tracking-widest mb-1 font-heading" style={{ color: 'hsl(217 91% 60%)' }}>Step {step}</div>
-                <div className="font-semibold mb-1" style={{ color: 'hsl(0 0% 95%)' }}>{title}</div>
-                <div className="text-xs leading-relaxed" style={{ color: 'hsl(215 12% 50%)' }}>{desc}</div>
+              { n: '01', title: 'Register', desc: 'Upload your artwork. A pHash fingerprint is computed and stored immutably on-chain.' },
+              { n: '02', title: 'Upload Suspect', desc: 'Anyone can upload a suspect image to check against all registered originals.' },
+              { n: '03', title: 'Forensic Scan', desc: 'All 8 orientations tested. Hamming Distance ≤ 10 flags plagiarism.' },
+            ].map(({ n, title, desc }, i) => (
+              <div key={n} className={`card p-5 stagger-${i + 1}`}>
+                <div className="flex items-center gap-2.5 mb-2">
+                  <span className="step-num">{n}</span>
+                  <span className="text-sm font-medium">{title}</span>
+                </div>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgb(113 113 122)' }}>{desc}</p>
               </div>
             ))}
           </div>
 
           {/* Two-panel layout */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* Panel 1: Register */}
-            <div className="glass-card glow-border p-6 flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+            {/* Register panel */}
+            <div className="card p-6 flex flex-col gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: 'hsl(217 91% 60%)', color: '#fff' }}>STEP 1</span>
-                  <h2 className="text-lg font-bold font-heading" style={{ color: 'hsl(0 0% 95%)' }}>Register Original Artwork</h2>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md tracking-wider" style={{ background: 'rgb(59 130 246)', color: '#fff' }}>REGISTER</span>
+                  <h2 className="text-base font-semibold">Original Artwork</h2>
                 </div>
-                <p className="text-sm" style={{ color: 'hsl(0 0% 55%)' }}>Upload YOUR original artwork to claim ownership. Stores the visual fingerprint on-chain.</p>
+                <p className="text-xs" style={{ color: 'rgb(113 113 122)' }}>Upload your original to claim on-chain ownership.</p>
               </div>
-              <label
-                className="flex flex-col items-center justify-center h-36 rounded-xl border-2 border-dashed cursor-pointer transition-all duration-300"
-                style={registerFile
-                  ? { borderColor: 'hsl(217 91% 60%)', backgroundColor: 'hsl(217 91% 60% / 0.05)' }
-                  : { borderColor: 'hsl(220 15% 16%)' }}
-              >
-                <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setRegisterFile(e.target.files[0])} />
-                {registerFile ? (
-                  <>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="hsl(217, 91%, 60%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    <span className="text-sm font-medium" style={{ color: 'hsl(217 91% 60%)' }}>Image Ready</span>
-                    <span className="text-xs mt-1 font-mono" style={{ color: 'hsl(0 0% 55%)' }}>{registerFile.name}</span>
-                  </>
+
+              <label className={`upload-zone h-36 ${registerFile ? 'upload-zone-active' : ''}`}>
+                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                  if (e.target.files) {
+                    const f = e.target.files[0]
+                    setRegisterFile(f)
+                    setRegisterPreviewUrl(URL.createObjectURL(f))
+                    setRegisterCloudinaryUrl(null)
+                    setRegisterStatus({ type: 'idle', message: '' })
+                  }
+                }} />
+                {registerFile && registerPreviewUrl ? (
+                  <div className="flex flex-col items-center gap-1.5 w-full h-full">
+                    <img src={registerPreviewUrl} alt="preview" className="rounded-lg object-contain" style={{ maxHeight: 80, maxWidth: '100%' }} />
+                    <span className="text-xs mono px-2 py-0.5 rounded max-w-[200px] truncate" style={{ color: 'rgb(59 130 246)', backgroundColor: 'rgb(24 24 27)' }}>{registerFile.name}</span>
+                  </div>
                 ) : (
-                  <>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-2" style={{ color: 'hsl(0 0% 55%)' }}>
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span className="text-sm" style={{ color: 'hsl(0 0% 55%)' }}>Click to upload artwork</span>
-                  </>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                    <span className="text-sm" style={{ color: 'rgb(113 113 122)' }}>Click to upload</span>
+                    <span className="text-[10px]" style={{ color: 'rgb(63 63 70)' }}>PNG, JPG, WEBP</span>
+                  </div>
                 )}
               </label>
+
               {registerStatus.type === 'loading' && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="status-dot status-dot-pending" />
-                  <span className="text-yellow-400 font-mono text-xs">{registerStatus.message}</span>
+                <div className="alert alert-warning flex items-center gap-2">
+                  <span className="dot dot-pulse" style={{ backgroundColor: 'rgb(245 158 11)' }} />
+                  <span className="text-xs">{registerStatus.message}</span>
                 </div>
               )}
               {registerStatus.type === 'registered' && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="status-dot status-dot-success" />
-                  <span className="text-emerald-400 font-mono text-xs">{registerStatus.message}</span>
+                <div className="alert alert-success flex items-center gap-2">
+                  <span className="dot" style={{ backgroundColor: 'rgb(34 197 94)' }} />
+                  <span className="text-xs">{registerStatus.message}</span>
                 </div>
               )}
-              {(registerStatus.type === 'error') && (
-                <div className="p-3 rounded-xl border text-xs font-mono leading-relaxed" style={{ backgroundColor: 'hsl(45 93% 47% / 0.08)', borderColor: 'hsl(45 93% 47% / 0.4)', color: 'hsl(45 93% 75%)' }}>
-                  {registerStatus.message}
+              {registerStatus.type === 'error' && (
+                <div className="alert alert-danger text-xs">{registerStatus.message}</div>
+              )}
+
+              {registerCloudinaryUrl && registerStatus.type === 'registered' && (
+                <div className="p-3 rounded-xl space-y-2" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)' }}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgb(161 161 170)' }}>Stored on Cloudinary</div>
+                  <img
+                    src={registerCloudinaryUrl}
+                    alt="Registered artwork"
+                    className="w-full rounded-lg object-contain"
+                    style={{ maxHeight: 120 }}
+                  />
+                  <a
+                    href={registerCloudinaryUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mono text-[10px] block truncate"
+                    style={{ color: 'rgb(59 130 246)' }}
+                  >
+                    {registerCloudinaryUrl}
+                  </a>
                 </div>
               )}
-              <button onClick={registerArtwork} className="btn-primary-glow w-full text-sm">
+
+              <button onClick={registerArtwork} className="btn-primary w-full mt-auto">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                 Register on Algorand
               </button>
             </div>
 
-            {/* Panel 2: Verify */}
-            <div className="glass-card glow-border p-6 flex flex-col gap-4">
+            {/* Verify panel */}
+            <div className="card p-6 flex flex-col gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: 'hsl(271 81% 56%)', color: '#fff' }}>STEP 2</span>
-                  <h2 className="text-lg font-bold" style={{ color: 'hsl(0 0% 95%)' }}>Verify Suspect Artwork</h2>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md tracking-wider" style={{ background: 'rgb(39 39 42)', color: 'rgb(161 161 170)' }}>VERIFY</span>
+                  <h2 className="text-base font-semibold">Suspect Artwork</h2>
                 </div>
-                <p className="text-sm" style={{ color: 'hsl(0 0% 55%)' }}>Upload a SUSPECT image to check if it's a plagiarised copy of any registered original.</p>
+                <p className="text-xs" style={{ color: 'rgb(113 113 122)' }}>Upload a suspect image to check for plagiarism.</p>
               </div>
-              <label
-                className="flex flex-col items-center justify-center h-36 rounded-xl border-2 border-dashed cursor-pointer transition-all duration-300"
-                style={verifyFile
-                  ? { borderColor: 'hsl(271 81% 56%)', backgroundColor: 'hsl(271 81% 56% / 0.05)' }
-                  : { borderColor: 'hsl(0 0% 16%)' }}
-              >
+
+              <label className={`upload-zone h-36 ${verifyFile ? 'upload-zone-active' : ''}`}>
                 <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setVerifyFile(e.target.files[0])} />
                 {verifyFile ? (
-                  <>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="hsl(271, 81%, 65%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    <span className="text-sm font-medium" style={{ color: 'hsl(271 81% 75%)' }}>Image Ready</span>
-                    <span className="text-xs mt-1 font-mono" style={{ color: 'hsl(0 0% 55%)' }}>{verifyFile.name}</span>
-                  </>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(59 130 246)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    <span className="text-sm font-medium" style={{ color: 'rgb(59 130 246)' }}>Ready</span>
+                    <span className="text-xs mono px-2 py-0.5 rounded max-w-[200px] truncate" style={{ color: 'rgb(161 161 170)', backgroundColor: 'rgb(24 24 27)' }}>{verifyFile.name}</span>
+                  </div>
                 ) : (
-                  <>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-2" style={{ color: 'hsl(0 0% 55%)' }}>
-                      <circle cx="11" cy="11" r="8" />
-                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
-                    <span className="text-sm" style={{ color: 'hsl(0 0% 55%)' }}>Click to upload suspect image</span>
-                  </>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                    <span className="text-sm" style={{ color: 'rgb(113 113 122)' }}>Click to upload suspect</span>
+                    <span className="text-[10px]" style={{ color: 'rgb(63 63 70)' }}>PNG, JPG, WEBP</span>
+                  </div>
                 )}
               </label>
+
               {verifyStatus.type === 'loading' && (
-                <div className="flex items-center gap-2">
-                  <span className="status-dot status-dot-pending" />
-                  <span className="text-yellow-400 font-mono text-xs">{verifyStatus.message}</span>
+                <div className="alert alert-warning flex items-center gap-2">
+                  <span className="dot dot-pulse" style={{ backgroundColor: 'rgb(245 158 11)' }} />
+                  <span className="text-xs">{verifyStatus.message}</span>
                 </div>
               )}
               {verifyStatus.type === 'original' && (
-                <div className="p-3 rounded-xl border text-xs font-mono" style={{ backgroundColor: 'hsl(217 91% 40% / 0.1)', borderColor: 'hsl(217 91% 60% / 0.4)', color: 'hsl(217 91% 80%)' }}>
-                  {verifyStatus.message}
+                <div className="alert alert-info">
+                  <div className="flex items-center gap-1.5 mb-1"><span className="dot" style={{ backgroundColor: 'rgb(59 130 246)' }} /><strong className="text-xs">ORIGINAL VERIFIED</strong></div>
+                  <span className="text-xs">{verifyStatus.message}</span>
                 </div>
               )}
               {verifyStatus.type === 'plagiarism' && (
-                <div className="p-3 rounded-xl border text-xs font-mono" style={{ backgroundColor: 'hsl(0 85% 55% / 0.1)', borderColor: 'hsl(0 85% 55% / 0.5)', color: 'hsl(0 85% 80%)' }}>
-                  {verifyStatus.message}
+                <div className="alert alert-danger">
+                  <div className="flex items-center gap-1.5 mb-1"><span className="dot" style={{ backgroundColor: 'rgb(239 68 68)' }} /><strong className="text-xs">PLAGIARISM DETECTED</strong></div>
+                  <span className="text-xs">{verifyStatus.message}</span>
                 </div>
               )}
               {verifyStatus.type === 'clear' && (
-                <div className="p-3 rounded-xl border text-xs font-mono" style={{ backgroundColor: 'hsl(160 60% 30% / 0.15)', borderColor: 'hsl(160 60% 45% / 0.4)', color: 'hsl(160 60% 75%)' }}>
-                  {verifyStatus.message}
+                <div className="alert alert-success">
+                  <div className="flex items-center gap-1.5 mb-1"><span className="dot" style={{ backgroundColor: 'rgb(34 197 94)' }} /><strong className="text-xs">CLEAR</strong></div>
+                  <span className="text-xs">{verifyStatus.message}</span>
                 </div>
               )}
               {verifyStatus.type === 'error' && (
-                <div className="p-3 rounded-xl border text-xs font-mono" style={{ backgroundColor: 'hsl(45 93% 47% / 0.08)', borderColor: 'hsl(45 93% 47% / 0.4)', color: 'hsl(45 93% 75%)' }}>
-                  {verifyStatus.message}
-                </div>
+                <div className="alert alert-danger text-xs">{verifyStatus.message}</div>
               )}
+
               {verifyDetectionMethod && verifyStatus.type !== 'idle' && verifyStatus.type !== 'loading' && (
-                <div className="p-3 rounded-xl text-xs space-y-2" style={{ backgroundColor: 'hsl(0 0% 12%)', border: '1px solid hsl(271 81% 56% / 0.3)' }}>
-                  <div className="font-bold uppercase tracking-widest mb-1 font-heading" style={{ color: 'hsl(271 81% 75%)' }}>Forensic Transparency Report</div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-24 shrink-0" style={{ color: 'hsl(0 0% 55%)' }}>Detection:</span>
-                    <span className="font-mono text-yellow-300">{verifyDetectionMethod}</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-24 shrink-0" style={{ color: 'hsl(0 0% 55%)' }}>On-chain:</span>
-                    <span className="font-mono" style={{ color: 'hsl(217 91% 70%)' }}>Algorand App ID #{APP_ID} (Testnet)</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-24 shrink-0" style={{ color: 'hsl(0 0% 55%)' }}>Pipeline:</span>
-                    <span className="font-mono" style={{ color: 'hsl(0 0% 80%)' }}>Median Blur → pHash DCT → 8-Way Symmetry</span>
-                  </div>
+                <div className="p-4 rounded-xl text-xs space-y-2" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)' }}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'rgb(161 161 170)' }}>Forensic Report</div>
+                  <div className="flex gap-2"><span style={{ color: 'rgb(113 113 122)', width: 72, flexShrink: 0 }}>Detection</span><span className="mono" style={{ color: 'rgb(253 224 71)' }}>{verifyDetectionMethod}</span></div>
+                  <div className="flex gap-2"><span style={{ color: 'rgb(113 113 122)', width: 72, flexShrink: 0 }}>On-chain</span><span className="mono" style={{ color: 'rgb(161 161 170)' }}>App #{APP_ID} · Algorand Testnet</span></div>
+                  <div className="flex gap-2"><span style={{ color: 'rgb(113 113 122)', width: 72, flexShrink: 0 }}>Pipeline</span><span className="mono" style={{ color: 'rgb(161 161 170)' }}>Median Blur → DCT → 8-Way Symmetry</span></div>
                 </div>
               )}
-              <button onClick={verifyArtwork} className="btn-primary-glow w-full text-sm mt-auto" style={{ backgroundColor: 'hsl(271 81% 56%)', boxShadow: '0 0 20px hsl(271 81% 56% / 0.3)' }}>
+
+              <button onClick={verifyArtwork} className="btn-secondary w-full mt-auto">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                 Scan for Matches
               </button>
             </div>
@@ -490,258 +652,121 @@ export default function App() {
           TAB 2 — Forensic Visualizer
       ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'forensic' && (
-        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 relative z-10" style={{ animation: 'fade-in-up 0.5s ease-out' }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8" style={{ animation: 'fade-in 0.35s ease' }}>
 
-          {/* Intro */}
-          <div className="glass-card glow-border p-6">
-            <h2 className="text-xl font-bold mb-2 font-heading" style={{ color: 'hsl(271 81% 80%)' }}>Multi-Layered Forensic Pipeline</h2>
-            <p className="text-sm leading-relaxed" style={{ color: 'hsl(0 0% 55%)' }}>
-              Veritas is <strong className="text-white">not a hash-checker</strong> — it is a resilient computer-vision protocol with zero blind spots.
-              Upload any image to see every step: adversarial noise is stripped with a{' '}
-              <span className="text-red-400">Median Blur</span>, the structural skeleton is extracted via a{' '}
-              <span className="text-yellow-300">DCT low-pass filter</span>, and all{' '}
-              <span className="text-pink-400">8 rotation/mirror variants</span> of the suspect image are tested.
-              All results cross-reference <span className="text-blue-400">Algorand App #{APP_ID}</span> to prove timestamped on-chain ownership.
-            </p>
-          </div>
-
-          {/* Pipeline Steps Reference */}
-          <div className="grid grid-cols-2 gap-4">
-            {PIPELINE_STEPS.map((s) => (
-              <div key={s.num} className="glass-card p-4 flex gap-3">
-                <div className="step-badge shrink-0" style={{ backgroundColor: 'hsl(220 16% 12%)' }}><span className={s.color}>{s.num}</span></div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`font-mono text-xs font-bold ${s.color}`}>STEP {s.num}</span>
-                    <span className="text-sm font-semibold">{s.title}</span>
+          {/* ── Upload strip ─────────────────────────────────────────────── */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center mb-6 sm:mb-7">
+            <label className={`upload-zone flex-1 ${forensicFile ? 'upload-zone-active' : ''}`} style={{ height: 52 }}>
+              <input type="file" className="hidden" accept="image/*" onChange={(e) => { if (e.target.files) { const f = e.target.files[0]; setForensicFile(f); setForensicOriginalUrl(URL.createObjectURL(f)); setForensicData(null); setForensicError(null) } }} />
+              {forensicFile
+                ? <span className="mono text-sm truncate px-3" style={{ color: 'rgb(161 161 170)', maxWidth: '100%' }}>{forensicFile.name}</span>
+                : <div className="flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span className="text-sm" style={{ color: 'rgb(113 113 122)' }}>Drop an image or click to upload</span>
                   </div>
-                  <p className="text-gray-400 text-xs leading-relaxed">{s.desc}</p>
-                </div>
-              </div>
-            ))}
+              }
+            </label>
+            <button onClick={runForensicAnalysis} disabled={forensicLoading || !forensicFile} className="btn-primary w-full sm:w-auto" style={{ height: 52, padding: '0 24px', flexShrink: 0 }}>
+              {forensicLoading
+                ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Analysing…</>
+                : <>Run Analysis</>
+              }
+            </button>
           </div>
 
-          {/* Upload + Analyse */}
-          <div className="glass-card glow-border p-6 space-y-4">
-            <h3 className="font-bold text-lg" style={{ color: 'hsl(0 0% 95%)' }}>Upload Image to Analyse</h3>
-            <div className="flex gap-4 items-end">
-              <label
-                className="flex-1 flex flex-col items-center justify-center h-28 rounded-xl border-2 border-dashed cursor-pointer transition-all duration-300"
-                style={forensicFile
-                  ? { borderColor: 'hsl(271 81% 56%)', backgroundColor: 'hsl(271 81% 56% / 0.05)' }
-                  : { borderColor: 'hsl(0 0% 16%)' }}
-              >
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      setForensicFile(e.target.files[0])
-                      setForensicData(null)
-                      setForensicError(null)
-                    }
-                  }}
-                />
-                {forensicFile ? (
-                  <>
-                    <span className="text-sm font-medium" style={{ color: 'hsl(271 81% 75%)' }}>{forensicFile.name}</span>
-                  </>
-                ) : (
-                  <span className="text-sm" style={{ color: 'hsl(0 0% 55%)' }}>Click to upload image</span>
-                )}
-              </label>
-              <button
-                onClick={runForensicAnalysis}
-                disabled={forensicLoading || !forensicFile}
-                className="btn-primary-glow text-sm"
-                style={{ backgroundColor: 'hsl(271 81% 56%)', boxShadow: '0 0 20px hsl(271 81% 56% / 0.3)' }}
-              >
-                {forensicLoading ? 'Analysing...' : 'Run Analysis'}
-              </button>
+          {forensicError && <div className="alert alert-danger text-xs" style={{ marginBottom: 20 }}>{forensicError}</div>}
+
+          {/* ── Idle placeholder ─────────────────────────────────────────── */}
+          {!forensicData && !forensicLoading && (
+            <div style={{ textAlign: 'center', paddingTop: 72, paddingBottom: 72, color: 'rgb(63 63 70)' }}>
+              <div style={{ fontSize: 36, marginBottom: 14 }}>🔬</div>
+              <p className="text-sm">Upload an image and run analysis to visualise the full pipeline</p>
             </div>
-            {forensicError && (
-              <div className="p-3 rounded-xl border text-sm font-mono" style={{ backgroundColor: 'hsl(45 93% 47% / 0.08)', borderColor: 'hsl(45 93% 47% / 0.4)', color: 'hsl(45 93% 75%)' }}>
-                {forensicError}
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Results */}
+          {/* ── Pipeline results ─────────────────────────────────────────── */}
           {forensicData && (
-            <div className="space-y-6">
+            <div style={{ animation: 'fade-in 0.4s ease' }}>
 
-              {/* Row 1: Grayscale image + DCT heatmap */}
-              <div className="grid grid-cols-2 gap-6">
-
-                {/* Steps 01-02 result — Raw vs Denoised grayscale */}
-                <div className="glass-card p-5 space-y-3" style={{ border: '1px solid hsl(187 67% 40% / 0.4)' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold" style={{ color: 'hsl(187 67% 60%)' }}>STEPS 01–02 OUTPUT</span>
-                    <span className="text-sm font-semibold">Noise Defense + Grayscale</span>
+              {/* STEP 01→02 — Noise Defense + Grayscale */}
+              <ForensicStepCard num="01→02" title="Noise Defense + Grayscale" delay={0}
+                tooltip="A 3×3 Median Blur removes adversarial high-frequency perturbations before hashing. The image is then converted to grayscale and resized to 32×32 — stripping colour noise and leaving only the structural luminance skeleton.">
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="flex-1 flex justify-center py-2">
+                    <ForensicImgBox label="Original (colour)" src={forensicOriginalUrl ?? `data:image/png;base64,${forensicData.gray_original_b64}`} />
                   </div>
-                  <p className="text-gray-400 text-xs">
-                    <span className="text-gray-300">Left:</span> raw grayscale (before denoising).{' '}
-                    <span className="text-cyan-300">Right:</span> after 3×3 Median Blur — adversarial perturbations stripped.
-                    The algorithm only ever hashes the <span className="text-cyan-300">right image</span>.
-                  </p>
-                  <div className="flex justify-center items-center gap-4">
-                    <div className="text-center space-y-1">
-                      <img
-                        src={`data:image/png;base64,${forensicData.gray_original_b64}`}
-                        alt="raw grayscale"
-                        className="rounded border border-gray-600 bg-black"
-                        style={{ width: '72px', height: '72px', imageRendering: 'pixelated' }}
-                      />
-                      <p className="text-xs text-gray-500">Raw Input</p>
-                    </div>
-                    <div className="text-gray-600 text-xl font-light">→</div>
-                    <div className="text-center space-y-1">
-                      <img
-                        src={`data:image/png;base64,${forensicData.gray_32x32_b64}`}
-                        alt="denoised grayscale"
-                        className="rounded border border-cyan-700 bg-black"
-                        style={{ width: '72px', height: '72px', imageRendering: 'pixelated' }}
-                      />
-                      <p className="text-xs text-cyan-400">After Denoising</p>
-                    </div>
+                  <RightArrow />
+                  <div className="flex-1 flex justify-center py-2">
+                    <ForensicImgBox label="Denoised · 32×32 (grey)" src={`data:image/png;base64,${forensicData.gray_32x32_b64}`} />
                   </div>
-                  <p className="text-center text-xs text-gray-500">Pixelated rendering — each of the 32×32 pixels is visible</p>
                 </div>
+              </ForensicStepCard>
 
-                {/* Step 3 result — DCT low-freq heatmap 8×8 */}
-                <div className="glass-card p-5 space-y-3" style={{ border: '1px solid hsl(45 93% 47% / 0.4)' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold" style={{ color: 'hsl(45 93% 60%)' }}>STEP 02–03 OUTPUT</span>
-                    <span className="text-sm font-semibold">DCT Low-Frequency Heatmap</span>
+              <DownConnector />
+
+              {/* STEP 02→03 — DCT Frequency Decomposition */}
+              <ForensicStepCard num="02→03" title="DCT Frequency Decomposition" delay={0.05}
+                tooltip="2D Discrete Cosine Transform converts the 32×32 pixel grid into 1024 frequency coefficients. Only the top-left 8×8 block is kept — the 64 lowest-frequency values encoding large structural shapes. High-frequency noise and detail are discarded.">
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="flex-1 flex justify-center py-2">
+                    <ForensicImgBox label="Denoised Input" src={`data:image/png;base64,${forensicData.gray_32x32_b64}`} />
                   </div>
-                  <p className="text-gray-400 text-xs">The 8×8 lowest-frequency DCT coefficients. Yellow = high energy (dominant structure), blue = low energy. Noise lives outside this grid.</p>
-                  <div className="flex justify-center">
-                    <div
-                      style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '2px', width: '160px', height: '160px' }}
-                    >
-                      {forensicData.dct_heatmap.map((v, i) => (
-                        <div
-                          key={i}
-                          title={`[${Math.floor(i / 8)},${i % 8}] = ${v.toFixed(1)}`}
-                          style={{
-                            backgroundColor: dctColor(v),
-                            borderRadius: '2px',
-                          }}
-                        />
+                  <RightArrow />
+                  <div className="flex-1 flex flex-col items-center gap-2.5 py-2">
+                    <DCTHeatmapGrid data={forensicData.dct_heatmap} />
+                    <DCTBarGraph data={forensicData.dct_heatmap} />
+                  </div>
+                </div>
+              </ForensicStepCard>
+
+              <DownConnector />
+
+              {/* STEP 04 — 64-bit Bitmask */}
+              <ForensicStepCard num="04" title="64-bit Bitmask" delay={0.1}
+                tooltip="The median of the 64 DCT coefficients is computed. Each coefficient above the median becomes bit 1, below becomes 0. Result: a 64-bit structural fingerprint invariant to resizing, colour shifts, and compression artefacts.">
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="flex-1 flex justify-center py-2">
+                    <DCTHeatmapGrid data={forensicData.dct_heatmap} />
+                  </div>
+                  <RightArrow />
+                  <div className="flex-1 flex justify-center py-2">
+                    <BitmaskGrid data={forensicData.bitmask_8x8} />
+                  </div>
+                </div>
+              </ForensicStepCard>
+
+              <DownConnector />
+
+              {/* STEP 05 — Fingerprint Summary */}
+              <div className="card p-5" style={{ animation: 'fade-in 0.4s ease 0.15s both' }}>
+                <div className="flex items-center gap-2.5 mb-5">
+                  <span className="step-num">05</span>
+                  <span className="text-sm font-semibold">Fingerprint Summary</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div style={{ padding: '14px 16px', background: 'rgb(9,9,11)', borderRadius: 8, border: '1px solid rgb(39,39,42)' }}>
+                    <p className="mono" style={{ fontSize: '0.625rem', color: 'rgb(63,63,70)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Hex pHash</p>
+                    <code className="mono" style={{ fontSize: '0.8125rem', color: 'rgb(134,239,172)', letterSpacing: '0.05em', wordBreak: 'break-all' }}>{forensicData.phash_hex}</code>
+                  </div>
+                  <div style={{ padding: '14px 16px', background: 'rgb(9,9,11)', borderRadius: 8, border: '1px solid rgb(39,39,42)' }}>
+                    <p className="mono" style={{ fontSize: '0.625rem', color: 'rgb(63,63,70)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>64-bit Binary</p>
+                    <div className="mono" style={{ fontSize: '0.6875rem', lineHeight: 1.7, wordBreak: 'break-all' }}>
+                      {Array.from({ length: 8 }, (_, row) => (
+                        <span key={row} style={{ marginRight: 6, display: 'inline-block' }}>
+                          {forensicData.phash_binary.slice(row * 8, row * 8 + 8).split('').map((b, col) => (
+                            <span key={col} style={{ color: b === '1' ? 'rgb(250,250,250)' : 'rgb(63,63,70)' }}>{b}</span>
+                          ))}
+                        </span>
                       ))}
                     </div>
                   </div>
-                  <p className="text-center text-xs text-gray-500">8×8 coefficient grid. Hover for exact value.</p>
-                </div>
-              </div>
-
-              {/* Row 2: Bitmask 8×8 + Binary string */}
-              <div className="grid grid-cols-2 gap-6">
-
-                {/* Step 4 result — 8×8 bitmask */}
-                <div className="glass-card p-5 space-y-3" style={{ border: '1px solid hsl(142 71% 45% / 0.4)' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold" style={{ color: 'hsl(142 71% 55%)' }}>STEP 04 OUTPUT</span>
-                    <span className="text-sm font-semibold">64-bit Bitmask Grid</span>
-                  </div>
-                  <p className="text-gray-400 text-xs">
-                    Median threshold = <code className="text-yellow-300 bg-gray-800 px-1 rounded">{forensicData.median_frequency}</code>.
-                    {' '}Green cell = 1 (above median). Black cell = 0 (below). This 8×8 grid IS the pHash.
-                  </p>
-                  <div className="flex justify-center">
-                    <div
-                      style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '3px', width: '160px', height: '160px' }}
-                    >
-                      {forensicData.bitmask_8x8.map((bit, i) => (
-                        <div
-                          key={i}
-                          title={`bit[${i}] = ${bit}`}
-                          style={{
-                            backgroundColor: bit === 1 ? '#22c55e' : '#111827',
-                            border: '1px solid #374151',
-                            borderRadius: '2px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <span style={{ fontSize: '9px', color: bit === 1 ? '#bbf7d0' : '#4b5563', fontFamily: 'monospace' }}>
-                            {bit}
-                          </span>
-                        </div>
-                      ))}
+                  <div style={{ padding: '14px 16px', background: 'rgb(9,9,11)', borderRadius: 8, border: '1px solid rgb(39,39,42)' }}>
+                    <p className="mono" style={{ fontSize: '0.625rem', color: 'rgb(63,63,70)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Median Coefficient</p>
+                    <code className="mono" style={{ fontSize: '1.125rem', color: 'rgb(253,224,71)' }}>{forensicData.median_frequency}</code>
+                    <div style={{ marginTop: 10, fontSize: '0.6875rem', color: 'rgb(113,113,122)', lineHeight: 1.6 }}>
+                      Hamming ≤ 10 → plagiarism<br />Hamming &gt; 10 → clear
                     </div>
                   </div>
-                  <p className="text-center text-xs text-gray-500">Green = bit 1, Dark = bit 0</p>
-                </div>
-
-                {/* Hash summary */}
-                <div className="glass-card p-5 space-y-4" style={{ border: '1px solid hsl(142 71% 45% / 0.4)' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold" style={{ color: 'hsl(142 71% 55%)' }}>FINAL HASH</span>
-                    <span className="text-sm font-semibold">Fingerprint Summary</span>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Hexadecimal pHash (16 chars)</p>
-                      <code className="text-green-300 bg-gray-800 px-3 py-1.5 rounded-lg text-sm font-mono block tracking-widest">
-                        {forensicData.phash_hex}
-                      </code>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">64-bit Binary String</p>
-                      <div className="bg-gray-800 rounded-lg px-3 py-2 font-mono text-xs leading-relaxed break-all">
-                        {/* Render 8 groups of 8 bits for readability */}
-                        {Array.from({ length: 8 }, (_, row) => (
-                          <span key={row} className="inline-block mr-2">
-                            {forensicData.phash_binary.slice(row * 8, row * 8 + 8).split('').map((bit, col) => (
-                              <span
-                                key={col}
-                                className={bit === '1' ? 'text-green-300' : 'text-gray-600'}
-                              >
-                                {bit}
-                              </span>
-                            ))}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Median DCT Coefficient</p>
-                      <code className="text-yellow-300 bg-gray-800 px-3 py-1.5 rounded-lg text-sm font-mono block">
-                        {forensicData.median_frequency}
-                      </code>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto pt-2 border-t border-gray-800">
-                    <p className="text-xs text-gray-500 leading-relaxed">
-                      Hamming distance between two images = number of differing bits in their 64-bit hashes.
-                      {' '}<span className="text-yellow-300">Distance ≤ 10</span> → structurally identical (plagiarism).
-                      {' '}<span className="text-green-300">Distance &gt; 10</span> → different artwork (clear).
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tamper resistance note */}
-              <div className="glass-card p-5">
-                <h4 className="font-semibold text-sm mb-3 font-heading" style={{ color: 'hsl(0 0% 80%)' }}>Zero Blind Spots — Every Attack Vector Covered</h4>
-                <div className="grid grid-cols-5 gap-3 text-xs" style={{ color: 'hsl(215 12% 50%)' }}>
-                  {[
-                    { edit: 'Colour Grading', why: 'Grayscale step strips all colour before hashing. Colour shifts produce zero Hamming distance change.' },
-                    { edit: 'JPEG Compression', why: 'Artefacts live in high-frequency DCT bands that are discarded by the 8×8 low-pass filter.' },
-                    { edit: 'Cropping', why: 'Resize to 32×32 re-normalises geometry. Even 20% crops shift very few of the 64 structural bits.' },
-                    { edit: 'Rotation / Flip', why: '8-way symmetry scan tests all 4 rotations and 4 mirror variants. No orientation escapes detection.' },
-                    { edit: 'Adversarial Noise', why: 'Median blur pre-processing squeezes out imperceptible high-frequency perturbations before the DCT runs.' },
-                  ].map(({ edit, why }) => (
-                    <div key={edit} className="rounded-xl p-3" style={{ backgroundColor: 'hsl(0 0% 12%)' }}>
-                      <div className="font-semibold text-white mb-1">{edit}</div>
-                      <div>{why}</div>
-                    </div>
-                  ))}
                 </div>
               </div>
 
@@ -749,153 +774,231 @@ export default function App() {
           )}
         </div>
       )}
+
       {/* ══════════════════════════════════════════════════════════════════════
           TAB 3 — System Architecture
       ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'architecture' && (
-        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 relative z-10" style={{ animation: 'fade-in-up 0.5s ease-out' }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-10" style={{ animation: 'fade-in 0.35s ease' }}>
 
-          {/* Title */}
-          <div className="glass-card glow-border p-6">
-            <h2 className="text-xl font-bold text-emerald-300 mb-1 font-heading">System Architecture — Veritas Protocol</h2>
-            <p className="text-gray-400 text-sm">
-              End-to-end flow from image upload to on-chain copyright proof on{' '}
-              <span className="text-blue-400 font-semibold">Algorand Testnet</span>.
-              App ID: <code className="text-yellow-300 bg-gray-800 px-1 rounded">{APP_ID}</code> ·
-              Owner: <code className="text-green-300 bg-gray-800 px-1 rounded text-xs">{OWNER.slice(0, 12)}...{OWNER.slice(-6)}</code>
+          {/* ── Page header ─────────────────────────────────────────────── */}
+          <div className="space-y-3">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">System Architecture</h1>
+            <p className="text-sm leading-relaxed" style={{ color: 'rgb(161 161 170)', maxWidth: '100%' }}>
+              End-to-end pipeline from image upload to immutable on-chain copyright proof on Algorand Testnet.
             </p>
-          </div>
-
-          {/* Artist Flow */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 font-heading" style={{ color: 'hsl(217 91% 70%)' }}>
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: 'hsl(217 91% 60%)' }}>A</span>
-              Artist Registration Flow
-            </h3>
-            <div className="flex items-stretch gap-2">
+            <div className="flex flex-wrap gap-2 pt-1">
               {[
-                { label: 'Upload Artwork', sub: 'Any image format', color: 'border-blue-700 bg-blue-950/30' },
-                { label: 'Median Blur', sub: 'Denoise 3×3 kernel', color: 'border-red-700 bg-red-950/30' },
-                { label: 'Grayscale 32×32', sub: 'Strip colour + resize', color: 'border-gray-600 bg-gray-800/50' },
-                { label: '2D DCT', sub: 'Freq. domain transform', color: 'border-yellow-700 bg-yellow-950/30' },
-                { label: '8×8 Low-pass', sub: 'Keep structure only', color: 'border-orange-700 bg-orange-950/30' },
-                { label: '64-bit pHash', sub: 'Median threshold bits', color: 'border-green-700 bg-green-950/30' },
-                { label: 'Pera Sign', sub: 'register_work(hash)', color: 'border-purple-700 bg-purple-950/30' },
-                { label: 'Algorand Box', sub: `App #${APP_ID} Testnet`, color: 'border-teal-600 bg-teal-950/30' },
-              ].map((step, i, arr) => (
-                <React.Fragment key={step.label}>
-                  <div className={`flex-1 rounded-xl border p-3 text-center ${step.color}`}>
-                    <div className="step-badge mx-auto mb-1" style={{ backgroundColor: 'hsl(220 16% 10%)' }}><span className="text-xs">{String(i + 1).padStart(2, '0')}</span></div>
-                    <div className="text-xs font-semibold text-white leading-tight">{step.label}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 leading-tight">{step.sub}</div>
-                  </div>
-                  {i < arr.length - 1 && (
-                    <div className="flex items-center text-gray-600 text-lg font-light self-center">›</div>
-                  )}
-                </React.Fragment>
+                `App #${APP_ID}`,
+                'Algorand Testnet',
+                'VeritasRegistry ARC4',
+                activeAddress ? `Owner: ${activeAddress.slice(0, 8)}…${activeAddress.slice(-4)}` : 'Owner: not connected',
+              ].map(label => (
+                <span key={label} className="mono text-[11px] px-3 py-1 rounded-full" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)', color: 'rgb(161 161 170)' }}>
+                  {label}
+                </span>
               ))}
             </div>
           </div>
 
-          {/* Verifier Flow */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 font-heading" style={{ color: 'hsl(271 81% 75%)' }}>
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: 'hsl(271 81% 56%)' }}>V</span>
-              Verifier Forensic Scan Flow
-            </h3>
-            <div className="flex items-stretch gap-2">
-              {[
-                { label: 'Upload Suspect', sub: 'Potential copy', color: 'border-purple-700 bg-purple-950/30' },
-                { label: 'Median Blur', sub: 'Adversarial defense', color: 'border-red-700 bg-red-950/30' },
-                { label: '8 Orientations', sub: '4 rot × 2 mirrors', color: 'border-pink-700 bg-pink-950/30' },
-                { label: 'pHash Each', sub: 'DCT skeleton hash', color: 'border-green-700 bg-green-950/30' },
-                { label: 'Read BoxMap', sub: `App #${APP_ID} live`, color: 'border-teal-600 bg-teal-950/30' },
-                { label: 'Hamming Dist.', sub: '64-bit XOR count', color: 'border-yellow-700 bg-yellow-950/30' },
-                { label: 'Threshold ≤10', sub: 'D=0 orig, D≤10 copy', color: 'border-orange-700 bg-orange-950/30' },
-                { label: 'Forensic Report', sub: 'Transform + TxID', color: 'border-blue-700 bg-blue-950/30' },
-              ].map((step, i, arr) => (
-                <React.Fragment key={step.label}>
-                  <div className={`flex-1 rounded-xl border p-3 text-center ${step.color}`}>
-                    <div className="step-badge mx-auto mb-1" style={{ backgroundColor: 'hsl(220 16% 10%)' }}><span className="text-xs">{String(i + 1).padStart(2, '0')}</span></div>
-                    <div className="text-xs font-semibold text-white leading-tight">{step.label}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 leading-tight">{step.sub}</div>
+          {/* ── Registration Flow ────────────────────────────────────────── */}
+          <div className="card p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md" style={{ backgroundColor: 'rgb(59 130 246 / 0.12)', color: 'rgb(59 130 246)', border: '1px solid rgb(59 130 246 / 0.3)' }}>
+                Registration
+              </span>
+              <span className="text-xs" style={{ color: 'rgb(113 113 122)' }}>Artist uploads original → immutable proof stored on-chain</span>
+            </div>
+
+            {/* Phase 1 */}
+            <div className="space-y-3">
+              <div className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: 'rgb(63 63 70)' }}>Phase 1 — Image Processing</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  { n: '01', label: 'Upload Artwork', sub: 'Any format' },
+                  { n: '02', label: 'Median Blur', sub: '3×3 denoise' },
+                  { n: '03', label: 'Grayscale 32×32', sub: 'Strip colour' },
+                  { n: '04', label: '2D DCT', sub: 'Freq. transform' },
+                ].map((s) => (
+                  <div key={s.n} className="rounded-xl p-3 sm:p-4" style={{ backgroundColor: 'rgb(14 14 16)', border: '1px solid rgb(39 39 42)' }}>
+                    <span className="mono text-[10px] font-semibold" style={{ color: 'rgb(59 130 246)' }}>{s.n}</span>
+                    <div className="text-xs sm:text-sm font-semibold mt-1.5 leading-tight">{s.label}</div>
+                    <div className="text-[11px] mt-1" style={{ color: 'rgb(113 113 122)' }}>{s.sub}</div>
                   </div>
-                  {i < arr.length - 1 && (
-                    <div className="flex items-center text-gray-600 text-lg font-light self-center">›</div>
-                  )}
-                </React.Fragment>
-              ))}
+                ))}
+              </div>
+            </div>
+
+            {/* Phase connector */}
+            <div className="flex items-center gap-3 px-1">
+              <div style={{ width: 1, height: 24, backgroundColor: 'rgb(39 39 42)', marginLeft: 40 }} />
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgb(63 63 70)' }}>continues ↓</span>
+            </div>
+
+            {/* Phase 2 */}
+            <div className="space-y-3">
+              <div className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: 'rgb(63 63 70)' }}>Phase 2 — Hash & Sign</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  { n: '05', label: '8×8 Low-pass', sub: 'Structure only' },
+                  { n: '06', label: '64-bit pHash', sub: 'Threshold bits' },
+                  { n: '07', label: 'Pera Sign', sub: 'register_work()' },
+                  { n: '08', label: 'Algorand Box', sub: `App #${APP_ID}` },
+                ].map((s) => (
+                  <div key={s.n} className="rounded-xl p-3 sm:p-4" style={{ backgroundColor: 'rgb(14 14 16)', border: '1px solid rgb(59 130 246 / 0.2)' }}>
+                    <span className="mono text-[10px] font-semibold" style={{ color: 'rgb(34 197 94)' }}>{s.n}</span>
+                    <div className="text-xs sm:text-sm font-semibold mt-1.5 leading-tight">{s.label}</div>
+                    <div className="text-[11px] mt-1" style={{ color: 'rgb(113 113 122)' }}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* On-chain storage diagram */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="glass-card p-5 col-span-2" style={{ border: '1px solid hsl(187 67% 40% / 0.4)' }}>
-              <h4 className="font-bold text-sm mb-3 font-heading" style={{ color: 'hsl(187 67% 60%)' }}>On-Chain Storage Model (Algorand BoxMap)</h4>
-              <div className="space-y-2 font-mono text-xs">
-                <div className="flex items-center gap-2 text-gray-400">
-                  <span className="text-teal-500">Contract:</span>
-                  <span>VeritasRegistry (App #{APP_ID}) — Testnet</span>
+          {/* ── Verification Flow ────────────────────────────────────────── */}
+          <div className="card p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md" style={{ backgroundColor: 'rgb(245 158 11 / 0.12)', color: 'rgb(245 158 11)', border: '1px solid rgb(245 158 11 / 0.3)' }}>
+                Verification
+              </span>
+              <span className="text-xs" style={{ color: 'rgb(113 113 122)' }}>Upload suspect → 8-way forensic scan → plagiarism report</span>
+            </div>
+
+            {/* Phase 1 */}
+            <div className="space-y-3">
+              <div className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: 'rgb(63 63 70)' }}>Phase 1 — Multi-orientation Scan</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  { n: '01', label: 'Upload Suspect', sub: 'Potential copy' },
+                  { n: '02', label: 'Median Blur', sub: 'Noise defense' },
+                  { n: '03', label: '8 Orientations', sub: '4 rot × 2 mirror' },
+                  { n: '04', label: 'pHash Each', sub: 'DCT skeleton' },
+                ].map((s) => (
+                  <div key={s.n} className="rounded-xl p-3 sm:p-4" style={{ backgroundColor: 'rgb(14 14 16)', border: '1px solid rgb(39 39 42)' }}>
+                    <span className="mono text-[10px] font-semibold" style={{ color: 'rgb(245 158 11)' }}>{s.n}</span>
+                    <div className="text-xs sm:text-sm font-semibold mt-1.5 leading-tight">{s.label}</div>
+                    <div className="text-[11px] mt-1" style={{ color: 'rgb(113 113 122)' }}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Phase connector */}
+            <div className="flex items-center gap-3 px-1">
+              <div style={{ width: 1, height: 24, backgroundColor: 'rgb(39 39 42)', marginLeft: 40 }} />
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgb(63 63 70)' }}>continues ↓</span>
+            </div>
+
+            {/* Phase 2 */}
+            <div className="space-y-3">
+              <div className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: 'rgb(63 63 70)' }}>Phase 2 — Compare &amp; Report</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  { n: '05', label: 'Read BoxMap', sub: `App #${APP_ID}` },
+                  { n: '06', label: 'Hamming Dist.', sub: '64-bit XOR' },
+                  { n: '07', label: 'Threshold ≤10', sub: 'Plagiarism flag' },
+                  { n: '08', label: 'Report', sub: 'Transform + TxID' },
+                ].map((s) => (
+                  <div key={s.n} className="rounded-xl p-3 sm:p-4" style={{ backgroundColor: 'rgb(14 14 16)', border: '1px solid rgb(245 158 11 / 0.2)' }}>
+                    <span className="mono text-[10px] font-semibold" style={{ color: 'rgb(239 68 68)' }}>{s.n}</span>
+                    <div className="text-xs sm:text-sm font-semibold mt-1.5 leading-tight">{s.label}</div>
+                    <div className="text-[11px] mt-1" style={{ color: 'rgb(113 113 122)' }}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── On-chain storage + Network + Security ───────────────────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="card p-4 sm:p-6 lg:col-span-2 space-y-4">
+              <h4 className="text-sm font-semibold">On-Chain Storage — Algorand BoxMap</h4>
+              <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: 'rgb(9 9 11)', border: '1px solid rgb(30 30 33)' }}>
+                <div className="mono text-xs" style={{ color: 'rgb(63 63 70)' }}>// VeritasRegistry · App #{APP_ID} · Algorand Testnet</div>
+                <div className="mono text-xs" style={{ color: 'rgb(113 113 122)' }}>
+                  BoxMap[<span style={{ color: 'rgb(253 224 71)' }}>String</span> → <span style={{ color: 'rgb(134 239 172)' }}>Account</span>]
                 </div>
-                <div className="bg-gray-800 rounded-lg p-3 space-y-1">
-                  <div className="text-gray-500 mb-2">BoxMap[String → Account]</div>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <div className="text-yellow-400 mb-1">Box Key (pHash hex)</div>
-                      <div className="text-gray-300 bg-gray-900 rounded p-2 break-all">"e3b0c44298fc1c14..."</div>
-                      <div className="text-gray-500 mt-1">16 hex chars = 64 bits</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <div className="mono text-[10px] uppercase tracking-wider mb-2" style={{ color: 'rgb(253 224 71)' }}>Key — pHash (hex)</div>
+                    <div className="mono text-xs rounded-lg p-3" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)', color: 'rgb(161 161 170)' }}>
+                      "e3b0c44298fc1c14..."
                     </div>
-                    <div className="text-gray-600 self-center text-xl">→</div>
-                    <div className="flex-1">
-                      <div className="text-green-400 mb-1">Box Value (Owner)</div>
-                      <div className="text-gray-300 bg-gray-900 rounded p-2 break-all">"{OWNER.slice(0, 16)}..."</div>
-                      <div className="text-gray-500 mt-1">32-byte Algorand pubkey</div>
+                  </div>
+                  <div>
+                    <div className="mono text-[10px] uppercase tracking-wider mb-2" style={{ color: 'rgb(134 239 172)' }}>Value — Owner address</div>
+                    <div className="mono text-xs rounded-lg p-3" style={{ backgroundColor: 'rgb(24 24 27)', border: '1px solid rgb(39 39 42)', color: 'rgb(161 161 170)' }}>
+                      {activeAddress ? `"${activeAddress.slice(0, 20)}..."` : '"Connect wallet to see address"'}
                     </div>
                   </div>
                 </div>
-                <div className="text-gray-500">
-                  ABI method: <span className="text-purple-400">register_work(string)void</span> · Fee: 2000 µALGO (covers box MBR)
-                </div>
+              </div>
+              <div className="mono text-xs" style={{ color: 'rgb(113 113 122)' }}>
+                ABI: <span style={{ color: 'rgb(161 161 170)' }}>register_work(string)void</span>
+                {' '}· Fee: <span style={{ color: 'rgb(161 161 170)' }}>2000 µALGO</span>
+                {' '}· MBR: <span style={{ color: 'rgb(161 161 170)' }}>auto-calculated + funded</span>
               </div>
             </div>
 
             <div className="space-y-4">
-              <div className="glass-card p-5" style={{ border: '1px solid hsl(217 91% 60% / 0.3)' }}>
-                <h4 className="font-bold text-sm mb-2 font-heading" style={{ color: 'hsl(217 91% 70%)' }}>Network Configuration</h4>
-                <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-gray-500">Node: </span><span className="text-gray-300 break-all">testnet-api.algonode.cloud</span></div>
-                  <div><span className="text-gray-500">Indexer: </span><span className="text-gray-300 break-all">testnet-idx.algonode.cloud</span></div>
-                  <div><span className="text-gray-500">Wallet: </span><span className="text-purple-400">Pera (@perawallet)</span></div>
-                  <div><span className="text-gray-500">Network: </span><span className="text-yellow-400">Algorand Testnet</span></div>
+              <div className="card p-5">
+                <h4 className="text-sm font-semibold mb-4">Network</h4>
+                <div className="space-y-3">
+                  {[
+                    { k: 'Node', v: 'algonode.cloud' },
+                    { k: 'Indexer', v: 'idx.algonode.cloud' },
+                    { k: 'Wallet', v: 'Pera Wallet' },
+                    { k: 'Chain', v: 'Algorand Testnet' },
+                  ].map(r => (
+                    <div key={r.k} className="flex justify-between items-baseline gap-2">
+                      <span className="text-[11px] uppercase tracking-wide" style={{ color: 'rgb(63 63 70)' }}>{r.k}</span>
+                      <span className="mono text-[11px]" style={{ color: 'rgb(161 161 170)' }}>{r.v}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="glass-card p-5" style={{ border: '1px solid hsl(142 71% 45% / 0.3)' }}>
-                <h4 className="font-bold text-sm mb-2 font-heading" style={{ color: 'hsl(142 71% 55%)' }}>Security Layers</h4>
-                <div className="space-y-1.5 text-xs text-gray-400">
-                  <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500 shrink-0"></span>Median Blur — adversarial noise</div>
-                  <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500 shrink-0"></span>8-way D4 symmetry invariance</div>
-                  <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500 shrink-0"></span>DCT skeleton (structure only)</div>
-                  <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500 shrink-0"></span>Immutable Algorand timestamp</div>
+              <div className="card p-5">
+                <h4 className="text-sm font-semibold mb-4">Security</h4>
+                <div className="space-y-2.5">
+                  {[
+                    'Median Blur noise defense',
+                    '8-way symmetry invariance',
+                    'DCT structural skeleton',
+                    'Immutable Algorand proof',
+                  ].map(item => (
+                    <div key={item} className="flex items-start gap-2.5 text-xs" style={{ color: 'rgb(113 113 122)' }}>
+                      <span className="dot mt-0.5 shrink-0" style={{ backgroundColor: 'rgb(34 197 94)' }} />
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Tech stack */}
-          <div className="glass-card p-5">
-            <h4 className="font-semibold text-sm mb-4 font-heading" style={{ color: 'hsl(0 0% 80%)' }}>Technology Stack</h4>
-            <div className="grid grid-cols-4 gap-4 text-xs">
+          {/* ── Tech Stack ──────────────────────────────────────────────── */}
+          <div className="card p-6">
+            <h4 className="text-sm font-semibold mb-6">Technology Stack</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
               {[
-                { layer: 'Frontend', color: 'text-blue-400', items: ['React 18 + TypeScript', 'Vite 5', 'Tailwind CSS v3', 'DaisyUI v4', '@txnlab/use-wallet-react v4', 'algosdk (ATC + ABI)'] },
-                { layer: 'Wallet', color: 'text-purple-400', items: ['Pera Wallet', 'WalletId.PERA', 'transactionSigner', 'AtomicTransactionComposer', 'ARC4 ABI call', 'Box MBR fee'] },
-                { layer: 'Backend (FastAPI)', color: 'text-yellow-400', items: ['Python 3.11', 'imagehash (pHash)', 'Pillow + MedianFilter', 'numpy + scipy DCT', 'algosdk v2client', 'AlgoNode REST API'] },
-                { layer: 'Blockchain', color: 'text-teal-400', items: ['Algorand Testnet', `App ID #${APP_ID}`, 'VeritasRegistry ARC4', 'BoxMap(String→Account)', 'ARC4 Event: Registration', 'AlgoNode (no token)'] },
-              ].map(({ layer, color, items }) => (
-                <div key={layer}>
-                  <div className={`font-bold ${color} mb-2 uppercase tracking-widest text-xs`}>{layer}</div>
-                  <ul className="space-y-1 text-gray-400">
-                    {items.map(item => <li key={item} className="flex gap-1"><span className="text-gray-600">·</span>{item}</li>)}
-                  </ul>
+                { layer: 'Frontend', accent: 'rgb(59 130 246)', items: ['React 18 + TypeScript', 'Vite 5', 'Tailwind CSS v3', '@txnlab/use-wallet-react', 'algosdk (ATC + ABI)'] },
+                { layer: 'Wallet', accent: 'rgb(168 85 247)', items: ['Pera Wallet', 'WalletId.PERA', 'transactionSigner', 'AtomicTransactionComposer', 'Box MBR fee'] },
+                { layer: 'Backend', accent: 'rgb(245 158 11)', items: ['Python 3.11 + FastAPI', 'imagehash (pHash)', 'Pillow MedianFilter', 'numpy + scipy DCT', 'Cloudinary CDN'] },
+                { layer: 'Blockchain', accent: 'rgb(34 197 94)', items: ['Algorand Testnet', `App ID #${APP_ID}`, 'VeritasRegistry ARC4', 'BoxMap(String→Account)', 'AlgoNode (no token)'] },
+              ].map(({ layer, accent, items }) => (
+                <div key={layer} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: accent }} />
+                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: accent }}>{layer}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {items.map(item => (
+                      <div key={item} className="flex items-start gap-2 text-xs" style={{ color: 'rgb(113 113 122)' }}>
+                        <span style={{ color: 'rgb(39 39 42)', flexShrink: 0 }}>·</span>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -905,10 +1008,10 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="relative z-10 py-8 px-6" style={{ borderTop: '1px solid hsl(220 15% 13% / 0.5)' }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between text-xs" style={{ color: 'hsl(215 12% 50%)' }}>
-          <span>© 2026 Veritas Protocol. Decentralized Copyright on Algorand.</span>
-          <span className="font-mono">App #{APP_ID} · Testnet</span>
+      <footer className="py-6 sm:py-8 px-4 sm:px-6 mt-auto" style={{ borderTop: '1px solid rgb(30 30 33)' }}>
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center sm:justify-between gap-2 text-xs text-center sm:text-left" style={{ color: 'rgb(63 63 70)' }}>
+          <span>© 2026 Veritas Protocol · Decentralized Copyright on Algorand</span>
+          <span className="mono">App #{APP_ID} · Testnet</span>
         </div>
       </footer>
     </div>
