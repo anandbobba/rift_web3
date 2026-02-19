@@ -240,6 +240,11 @@ async def verify_artwork(file: UploadFile = File(...)):
         return {"error": str(e)}
 
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Veritas Protocol API is running", "endpoints": ["/registry", "/compute-hash", "/verify", "/analyze"]}
+
+
 @app.get("/registry")
 async def get_registry():
     """Returns registry read live from Algorand Testnet boxes."""
