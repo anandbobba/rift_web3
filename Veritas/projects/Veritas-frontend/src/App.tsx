@@ -283,10 +283,16 @@ export default function App() {
       // ── Step 1: Compute pHash on backend (Median Blur → DCT → Bitmask) ─────
       const formData = new FormData()
       formData.append('file', registerFile)
-      const hashRes = await fetch(`${API}/compute-hash`, { method: 'POST', body: formData })
-      const hashData = await hashRes.json()
+      let hashData: Record<string, string>
+      try {
+        const hashRes = await fetch(`${API}/compute-hash`, { method: 'POST', body: formData })
+        hashData = await hashRes.json()
+      } catch {
+        throw new Error('Could not reach the backend. It may be waking up — please wait 30 seconds and try again.')
+      }
       if (hashData.error) throw new Error(`Hash error: ${hashData.error}`)
       const phash: string = hashData.phash
+      if (!phash) throw new Error('Backend returned no hash. It may still be waking up — please try again in a moment.')
       if (hashData.cloudinary_url) setRegisterCloudinaryUrl(hashData.cloudinary_url)
 
       setRegisterStatus({ type: 'loading', message: `Step 2/3 — pHash computed: ${phash}. Building on-chain transaction...` })
