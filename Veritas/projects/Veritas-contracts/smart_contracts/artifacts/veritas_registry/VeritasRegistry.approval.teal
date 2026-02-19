@@ -1,0 +1,70 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    // smart_contracts/veritas_registry/contract.py:3
+    // class VeritasRegistry(ARC4Contract):
+    txn NumAppArgs
+    bz main___algopy_default_create@7
+    pushbytes 0xc0bad95e // method "register_work(string)string"
+    txna ApplicationArgs 0
+    match main_register_work_route@5
+    err
+
+main_register_work_route@5:
+    // smart_contracts/veritas_registry/contract.py:8
+    // @arc4.abimethod
+    txn OnCompletion
+    !
+    txn ApplicationID
+    &&
+    assert
+    b register_work
+
+main___algopy_default_create@7:
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+
+// smart_contracts.veritas_registry.contract.VeritasRegistry.register_work[routing]() -> void:
+register_work:
+    // smart_contracts/veritas_registry/contract.py:8
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    pushint 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    extract 2 0
+    // smart_contracts/veritas_registry/contract.py:10-11
+    // # Check if the hash already exists using 'in' instead of '.contains()'
+    // assert p_hash not in self.registered_hashes, "Plagiarism Alert: Hash already registered!"
+    pushbytes "registered_hashes"
+    swap
+    concat
+    dup
+    box_len
+    bury 1
+    !
+    assert // Plagiarism Alert: Hash already registered!
+    // smart_contracts/veritas_registry/contract.py:13-14
+    // # Store the hash and map it to the sender's account
+    // self.registered_hashes[p_hash] = Txn.sender
+    txn Sender
+    box_put
+    // smart_contracts/veritas_registry/contract.py:8
+    // @arc4.abimethod
+    pushbytes 0x151f7c750020417274776f726b2072656769737465726564207375636365737366756c6c792e
+    log
+    pushint 1
+    return

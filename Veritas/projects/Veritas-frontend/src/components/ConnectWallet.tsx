@@ -11,76 +11,77 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
 
   const isKmd = (wallet: Wallet) => wallet.id === WalletId.KMD
 
-  return (
-    <dialog id="connect_wallet_modal" className={`modal ${openModal ? 'modal-open' : ''}`}style={{ display: openModal ? 'block' : 'none' }}>
-      <form method="dialog" className="modal-box">
-        <h3 className="font-bold text-2xl">Select wallet provider</h3>
+  if (!openModal) return null
 
-        <div className="grid m-2 pt-5">
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8 max-w-md w-full shadow-2xl shadow-blue-500/20">
+        <h3 className="text-2xl font-bold mb-6 text-blue-400">Select Wallet Provider</h3>
+
+        <div className="space-y-3">
           {activeAddress && (
-            <>
+            <div className="mb-6">
               <Account />
-              <div className="divider" />
-            </>
+              <div className="h-px bg-gray-700 my-4" />
+            </div>
           )}
 
           {!activeAddress &&
             wallets?.map((wallet) => (
               <button
-                data-test-id={`${wallet.id}-connect`}
-                className="btn border-teal-800 border-1  m-2"
                 key={`provider-${wallet.id}`}
-                onClick={() => {
-                  return wallet.connect()
+                className="w-full flex items-center justify-between p-4 bg-gray-700 hover:bg-gray-600 rounded-xl border border-gray-600 transition-all group"
+                onClick={async () => {
+                  await wallet.connect()
+                  closeModal()
                 }}
               >
-                {!isKmd(wallet) && (
-                  <img
-                    alt={`wallet_icon_${wallet.id}`}
-                    src={wallet.metadata.icon}
-                    style={{ objectFit: 'contain', width: '30px', height: 'auto' }}
-                  />
-                )}
-                <span>{isKmd(wallet) ? 'LocalNet Wallet' : wallet.metadata.name}</span>
+                <div className="flex items-center gap-4">
+                  {!isKmd(wallet) && (
+                    <img
+                      alt={wallet.id}
+                      src={wallet.metadata.icon}
+                      className="w-8 h-8 object-contain"
+                    />
+                  )}
+                  <span className="font-semibold text-lg">
+                    {isKmd(wallet) ? 'LocalNet Wallet (KMD)' : wallet.metadata.name}
+                  </span>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-blue-500 group-hover:animate-ping" />
               </button>
             ))}
         </div>
 
-        <div className="modal-action grid">
+        <div className="mt-8 flex flex-col gap-3">
+          {activeAddress && (
+            <button
+              className="w-full py-3 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition-all"
+              onClick={async () => {
+                const activeWallet = wallets?.find((w) => w.isActive)
+                if (activeWallet) {
+                  await activeWallet.disconnect()
+                } else {
+                  localStorage.removeItem('@txnlab/use-wallet:v3')
+                  window.location.reload()
+                }
+                closeModal()
+              }}
+            >
+              Logout / Disconnect
+            </button>
+          )}
+
           <button
-            data-test-id="close-wallet-modal"
-            className="btn"
-            onClick={() => {
-              closeModal()
-            }}
+            className="w-full py-3 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold transition-all"
+            onClick={closeModal}
           >
             Close
           </button>
-          {activeAddress && (
-            <button
-              className="btn btn-warning"
-              data-test-id="logout"
-              onClick={async () => {
-                if (wallets) {
-                  const activeWallet = wallets.find((w) => w.isActive)
-                  if (activeWallet) {
-                    await activeWallet.disconnect()
-                  } else {
-                    // Required for logout/cleanup of inactive providers
-                    // For instance, when you login to localnet wallet and switch network
-                    // to testnet/mainnet or vice verse.
-                    localStorage.removeItem('@txnlab/use-wallet:v3')
-                    window.location.reload()
-                  }
-                }
-              }}
-            >
-              Logout
-            </button>
-          )}
         </div>
-      </form>
-    </dialog>
+      </div>
+    </div>
   )
 }
+
 export default ConnectWallet

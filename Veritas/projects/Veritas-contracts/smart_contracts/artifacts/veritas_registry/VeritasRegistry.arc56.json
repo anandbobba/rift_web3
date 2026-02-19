@@ -1,0 +1,113 @@
+{
+    "name": "VeritasRegistry",
+    "structs": {},
+    "methods": [
+        {
+            "name": "register_work",
+            "args": [
+                {
+                    "type": "string",
+                    "name": "p_hash"
+                }
+            ],
+            "returns": {
+                "type": "string"
+            },
+            "actions": {
+                "create": [],
+                "call": [
+                    "NoOp"
+                ]
+            },
+            "readonly": false,
+            "events": [],
+            "recommendations": {}
+        }
+    ],
+    "arcs": [
+        22,
+        28
+    ],
+    "networks": {},
+    "state": {
+        "schema": {
+            "global": {
+                "ints": 0,
+                "bytes": 0
+            },
+            "local": {
+                "ints": 0,
+                "bytes": 0
+            }
+        },
+        "keys": {
+            "global": {},
+            "local": {},
+            "box": {}
+        },
+        "maps": {
+            "global": {},
+            "local": {},
+            "box": {
+                "registered_hashes": {
+                    "keyType": "AVMString",
+                    "valueType": "address",
+                    "prefix": "cmVnaXN0ZXJlZF9oYXNoZXM="
+                }
+            }
+        }
+    },
+    "bareActions": {
+        "create": [
+            "NoOp"
+        ],
+        "call": []
+    },
+    "sourceInfo": {
+        "approval": {
+            "sourceInfo": [
+                {
+                    "pc": [
+                        82
+                    ],
+                    "errorMessage": "Plagiarism Alert: Hash already registered!"
+                },
+                {
+                    "pc": [
+                        44
+                    ],
+                    "errorMessage": "invalid array length header"
+                },
+                {
+                    "pc": [
+                        52
+                    ],
+                    "errorMessage": "invalid number of bytes for arc4.dynamic_array<arc4.uint8>"
+                }
+            ],
+            "pcOffsetMethod": "none"
+        },
+        "clear": {
+            "sourceInfo": [],
+            "pcOffsetMethod": "none"
+        }
+    },
+    "source": {
+        "approval": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuYXBwcm92YWxfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjMKICAgIC8vIGNsYXNzIFZlcml0YXNSZWdpc3RyeShBUkM0Q29udHJhY3QpOgogICAgdHhuIE51bUFwcEFyZ3MKICAgIGJ6IG1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVANwogICAgcHVzaGJ5dGVzIDB4YzBiYWQ5NWUgLy8gbWV0aG9kICJyZWdpc3Rlcl93b3JrKHN0cmluZylzdHJpbmciCiAgICB0eG5hIEFwcGxpY2F0aW9uQXJncyAwCiAgICBtYXRjaCBtYWluX3JlZ2lzdGVyX3dvcmtfcm91dGVANQogICAgZXJyCgptYWluX3JlZ2lzdGVyX3dvcmtfcm91dGVANToKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjgKICAgIC8vIEBhcmM0LmFiaW1ldGhvZAogICAgdHhuIE9uQ29tcGxldGlvbgogICAgIQogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgICYmCiAgICBhc3NlcnQKICAgIGIgcmVnaXN0ZXJfd29yawoKbWFpbl9fX2FsZ29weV9kZWZhdWx0X2NyZWF0ZUA3OgogICAgdHhuIE9uQ29tcGxldGlvbgogICAgIQogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgICEKICAgICYmCiAgICByZXR1cm4KCgovLyBzbWFydF9jb250cmFjdHMudmVyaXRhc19yZWdpc3RyeS5jb250cmFjdC5WZXJpdGFzUmVnaXN0cnkucmVnaXN0ZXJfd29ya1tyb3V0aW5nXSgpIC0+IHZvaWQ6CnJlZ2lzdGVyX3dvcms6CiAgICAvLyBzbWFydF9jb250cmFjdHMvdmVyaXRhc19yZWdpc3RyeS9jb250cmFjdC5weTo4CiAgICAvLyBAYXJjNC5hYmltZXRob2QKICAgIHR4bmEgQXBwbGljYXRpb25BcmdzIDEKICAgIGR1cAogICAgcHVzaGludCAwCiAgICBleHRyYWN0X3VpbnQxNiAvLyBvbiBlcnJvcjogaW52YWxpZCBhcnJheSBsZW5ndGggaGVhZGVyCiAgICBwdXNoaW50IDIKICAgICsKICAgIGRpZyAxCiAgICBsZW4KICAgID09CiAgICBhc3NlcnQgLy8gaW52YWxpZCBudW1iZXIgb2YgYnl0ZXMgZm9yIGFyYzQuZHluYW1pY19hcnJheTxhcmM0LnVpbnQ4PgogICAgZXh0cmFjdCAyIDAKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjEwLTExCiAgICAvLyAjIENoZWNrIGlmIHRoZSBoYXNoIGFscmVhZHkgZXhpc3RzIHVzaW5nICdpbicgaW5zdGVhZCBvZiAnLmNvbnRhaW5zKCknCiAgICAvLyBhc3NlcnQgcF9oYXNoIG5vdCBpbiBzZWxmLnJlZ2lzdGVyZWRfaGFzaGVzLCAiUGxhZ2lhcmlzbSBBbGVydDogSGFzaCBhbHJlYWR5IHJlZ2lzdGVyZWQhIgogICAgcHVzaGJ5dGVzICJyZWdpc3RlcmVkX2hhc2hlcyIKICAgIHN3YXAKICAgIGNvbmNhdAogICAgZHVwCiAgICBib3hfbGVuCiAgICBidXJ5IDEKICAgICEKICAgIGFzc2VydCAvLyBQbGFnaWFyaXNtIEFsZXJ0OiBIYXNoIGFscmVhZHkgcmVnaXN0ZXJlZCEKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjEzLTE0CiAgICAvLyAjIFN0b3JlIHRoZSBoYXNoIGFuZCBtYXAgaXQgdG8gdGhlIHNlbmRlcidzIGFjY291bnQKICAgIC8vIHNlbGYucmVnaXN0ZXJlZF9oYXNoZXNbcF9oYXNoXSA9IFR4bi5zZW5kZXIKICAgIHR4biBTZW5kZXIKICAgIGJveF9wdXQKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy92ZXJpdGFzX3JlZ2lzdHJ5L2NvbnRyYWN0LnB5OjgKICAgIC8vIEBhcmM0LmFiaW1ldGhvZAogICAgcHVzaGJ5dGVzIDB4MTUxZjdjNzUwMDIwNDE3Mjc0Nzc2ZjcyNmIyMDcyNjU2NzY5NzM3NDY1NzI2NTY0MjA3Mzc1NjM2MzY1NzM3MzY2NzU2YzZjNzkyZQogICAgbG9nCiAgICBwdXNoaW50IDEKICAgIHJldHVybgo=",
+        "clear": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuY2xlYXJfc3RhdGVfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg=="
+    },
+    "byteCode": {
+        "approval": "CzEbQQAYgATAutleNhoAjgEAAQAxGRQxGBBEQgAIMRkUMRgUEEM2GgFJgQBZgQIISwEVEkRXAgCAEXJlZ2lzdGVyZWRfaGFzaGVzTFBJvUUBFEQxAL+AJhUffHUAIEFydHdvcmsgcmVnaXN0ZXJlZCBzdWNjZXNzZnVsbHkusIEBQw==",
+        "clear": "C4EBQw=="
+    },
+    "compilerInfo": {
+        "compiler": "puya",
+        "compilerVersion": {
+            "major": 5,
+            "minor": 7,
+            "patch": 1
+        }
+    },
+    "events": [],
+    "templateVariables": {}
+}

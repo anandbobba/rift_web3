@@ -1,44 +1,32 @@
 import logging
-
 import algokit_utils
+from algosdk.v2client.algod import AlgodClient
+from algosdk.v2client.indexer import IndexerClient
 
 logger = logging.getLogger(__name__)
 
-
-# define deployment behaviour based on supplied app spec
-def deploy() -> None:
+def deploy(
+    algod_client: AlgodClient,
+    indexer_client: IndexerClient,
+    app_spec: algokit_utils.ApplicationSpecification,
+    deployer: algokit_utils.Account,
+) -> None:
     from smart_contracts.artifacts.veritas_registry.veritas_registry_client import (
-        HelloArgs,
-        VeritasRegistryFactory,
+        VeritasRegistryClient,
     )
 
-    algorand = algokit_utils.AlgorandClient.from_environment()
-    deployer_ = algorand.account.from_environment("DEPLOYER")
-
-    factory = algorand.client.get_typed_app_factory(
-        VeritasRegistryFactory, default_sender=deployer_.address
+    # Initialize the client for your specific Veritas contract
+    app_client = VeritasRegistryClient(
+        algod_client,
+        creator=deployer,
+        indexer_client=indexer_client,
     )
 
-    app_client, result = factory.deploy(
-        on_update=algokit_utils.OnUpdate.AppendApp,
+    # Deploy the contract to the blockchain
+    app_client.deploy(
         on_schema_break=algokit_utils.OnSchemaBreak.AppendApp,
+        on_update=algokit_utils.OnUpdate.AppendApp,
     )
-
-    if result.operation_performed in [
-        algokit_utils.OperationPerformed.Create,
-        algokit_utils.OperationPerformed.Replace,
-    ]:
-        algorand.send.payment(
-            algokit_utils.PaymentParams(
-                amount=algokit_utils.AlgoAmount(algo=1),
-                sender=deployer_.address,
-                receiver=app_client.app_address,
-            )
-        )
-
-    name = "world"
-    response = app_client.send.hello(args=HelloArgs(name=name))
-    logger.info(
-        f"Called hello on {app_client.app_name} ({app_client.app_id}) "
-        f"with name={name}, received: {response.abi_return}"
-    )
+    
+    logger.info(f"🚀 Veritas Registry successfully deployed!")
+    logger.info(f"App ID: {app_client.app_id}")

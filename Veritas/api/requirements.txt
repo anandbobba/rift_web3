@@ -3,3 +3,5 @@ uvicorn
 python-multipart
 imagehash
 Pillow
+numpy
+scipy
