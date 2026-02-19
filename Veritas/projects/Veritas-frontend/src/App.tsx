@@ -260,8 +260,9 @@ export default function App() {
   const [forensicError, setForensicError] = useState<string | null>(null)
   const [registerPreviewUrl, setRegisterPreviewUrl] = useState<string | null>(null)
 
-  // Poll backend every 6s until it responds, then stop
+  // Poll backend until it responds, then stop
   useEffect(() => {
+    let id: ReturnType<typeof setInterval>
     const tryFetch = () => {
       fetch(`${API}/registry`)
         .then(r => r.json())
@@ -269,13 +270,13 @@ export default function App() {
           setRegistryCount(data.count ?? 0)
           setBackendReady(true)
           setBackendWaking(false)
-          clearInterval(id)
+          clearInterval(id) // id is always defined here since .then() is always async
         })
         .catch(() => { /* still waking, keep polling */ })
     }
     setBackendWaking(true)
+    id = setInterval(tryFetch, 5000)
     tryFetch() // immediate first attempt
-    const id = setInterval(tryFetch, 6000)
     return () => clearInterval(id)
   }, [])
 
