@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: veritas-api
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: Veritas/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: CLOUDINARY_URL
+        sync: false   # You will paste this value in Render dashboard
