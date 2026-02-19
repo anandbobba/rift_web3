@@ -384,7 +384,7 @@ export default function App() {
         setVerifyDetectionMethod(data.detection_method ?? null)
       }
     } catch {
-      setVerifyStatus({ type: 'error', message: 'Backend offline. Run: python main.py in the api/ folder.' })
+      setVerifyStatus({ type: 'error', message: 'Could not reach the backend. Please try again in a moment.' })
     }
   }
 
@@ -405,7 +405,7 @@ export default function App() {
       if (data.error) throw new Error(data.error)
       setForensicData(data as ForensicData)
     } catch (e: unknown) {
-      setForensicError(e instanceof Error ? e.message : 'Backend offline. Run: python main.py')
+      setForensicError(e instanceof Error ? e.message : 'Could not reach the backend. Please try again in a moment.')
     } finally {
       setForensicLoading(false)
     }
