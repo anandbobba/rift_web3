@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 
 # Load .env from the same directory as this file, regardless of cwd
 load_dotenv(Path(__file__).parent / '.env')
@@ -104,6 +105,22 @@ def denoise(img: Image.Image) -> Image.Image:
 def compute_phash(img: Image.Image) -> imagehash.ImageHash:
     """Denoise then pHash — always matches what was stored on-chain."""
     return imagehash.phash(denoise(img))
+
+
+def get_original_sha256_from_cloudinary(phash_str: str) -> str | None:
+    """
+    Fetch the original registered image from Cloudinary and return its SHA-256.
+    Used to distinguish "exact same file" from "perceptually identical derivative".
+    """
+    try:
+        resource = cloudinary.api.resource(f"veritas/artwork_{phash_str}")
+        url = resource.get("secure_url", "")
+        if url:
+            r = requests.get(url, timeout=15)
+            return hashlib.sha256(r.content).hexdigest()
+    except Exception as e:
+        print(f"[CLOUDINARY] Could not fetch original for SHA-256 comparison: {e}")
+    return None
 
 
 def fetch_registry_from_chain() -> dict:
@@ -228,6 +245,26 @@ async def verify_artwork(file: UploadFile = File(...)):
         detection_method = f"Detected via {best_transform}"
 
         if best_distance == 0:
+            # pHash is perceptually identical — now check if bytes are actually the same.
+            # A sketch/filter/stylised version can produce the same pHash as the original
+            # but is a different file → should be Plagiarism Detected, not Original Verified.
+            uploaded_sha = hashlib.sha256(data).hexdigest()
+            original_sha = get_original_sha256_from_cloudinary(best_match_hash)
+            print(f"[VERIFY] SHA-256 uploaded={uploaded_sha[:12]}... original={str(original_sha)[:12]}...")
+
+            if original_sha is not None and uploaded_sha != original_sha:
+                # Same perceptual structure, different file — derivative work
+                return {
+                    "status": "Plagiarism Detected",
+                    "score": 0,
+                    "matched_hash": best_match_hash,
+                    "owner": best_match_owner,
+                    "detection_method": f"{detection_method} (near-identical derivative — same composition, different file)",
+                    "app_id": APP_ID,
+                    "network": "Testnet",
+                }
+
+            # SHA-256 matches (or Cloudinary unavailable) — treat as genuine original
             return {
                 "status": "Original",
                 "score": 0,
