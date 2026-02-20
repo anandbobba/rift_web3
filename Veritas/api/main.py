@@ -62,16 +62,37 @@ try:
 except AttributeError:
     _FLIP_LR = Image.FLIP_LEFT_RIGHT  # type: ignore[attr-defined]
 
-# ── 8-Way Symmetry Transform Table ───────────────────────────────────────────
+def pad_to_scale(img: Image.Image, factor: float) -> Image.Image:
+    """
+    Simulate 'unzoom': place the image centred on a neutral-grey canvas that is
+    `factor` times larger. This reverses a crop/zoom so pHash sees the original
+    low-frequency structure again.
+    e.g. factor=2.0 → the query image fills only the centre 50% of the canvas.
+    """
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    nw, nh = int(w * factor), int(h * factor)
+    canvas = Image.new("RGB", (nw, nh), (128, 128, 128))
+    canvas.paste(rgb, ((nw - w) // 2, (nh - h) // 2))
+    return canvas
+
+
+# ── Transform Table: 8-way symmetry + zoom-out variants ───────────────────────
 SYMMETRY_TRANSFORMS = [
-    ("Original",               lambda img: img),
-    ("90deg Rotation",         lambda img: img.rotate(90, expand=True)),
-    ("180deg Rotation",        lambda img: img.rotate(180)),
-    ("270deg Rotation",        lambda img: img.rotate(270, expand=True)),
-    ("Horizontal Mirror",      lambda img: img.transpose(_FLIP_LR)),
-    ("Mirrored 90deg Rotation",  lambda img: img.rotate(90, expand=True).transpose(_FLIP_LR)),
-    ("Mirrored 180deg Rotation", lambda img: img.rotate(180).transpose(_FLIP_LR)),
-    ("Mirrored 270deg Rotation", lambda img: img.rotate(270, expand=True).transpose(_FLIP_LR)),
+    ("Original",                    lambda img: img),
+    ("90deg Rotation",              lambda img: img.rotate(90, expand=True)),
+    ("180deg Rotation",             lambda img: img.rotate(180)),
+    ("270deg Rotation",             lambda img: img.rotate(270, expand=True)),
+    ("Horizontal Mirror",           lambda img: img.transpose(_FLIP_LR)),
+    ("Mirrored 90deg Rotation",     lambda img: img.rotate(90, expand=True).transpose(_FLIP_LR)),
+    ("Mirrored 180deg Rotation",    lambda img: img.rotate(180).transpose(_FLIP_LR)),
+    ("Mirrored 270deg Rotation",    lambda img: img.rotate(270, expand=True).transpose(_FLIP_LR)),
+    # Zoom-invariance: pad the query image to simulate it being a zoomed-in crop
+    ("Zoom-out x1.25",              lambda img: pad_to_scale(img, 1.25)),
+    ("Zoom-out x1.5",               lambda img: pad_to_scale(img, 1.50)),
+    ("Zoom-out x2.0",               lambda img: pad_to_scale(img, 2.00)),
+    ("Zoom-out x1.25 + Mirror",     lambda img: pad_to_scale(img, 1.25).transpose(_FLIP_LR)),
+    ("Zoom-out x1.5  + Mirror",     lambda img: pad_to_scale(img, 1.50).transpose(_FLIP_LR)),
 ]
 
 
@@ -217,7 +238,7 @@ async def verify_artwork(file: UploadFile = File(...)):
                 "network": "Testnet",
             }
 
-        if best_distance <= 10:
+        if best_distance <= 15:
             return {
                 "status": "Plagiarism Detected",
                 "score": int(best_distance),
