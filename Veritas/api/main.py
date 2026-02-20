@@ -1,3 +1,47 @@
+# =============================================================================
+#  Veritas Protocol — FastAPI Forensic Backend
+#  -----------------------------------------------------------------------------
+#  Project   : Veritas Protocol
+#  Team      : Bingo — Gaurav B Shet (Lead), Anand Bobba, Keerthan Jogi
+#  Institute : NMAM Institute of Technology
+#  Event     : RIFT Hackathon 2026
+#  Runtime   : Python 3.12 · Docker (python:3.12-slim) · Deployed on Render
+# =============================================================================
+#
+#  OVERVIEW
+#  --------
+#  This module is the AI forensic engine of the Veritas Protocol. It exposes
+#  REST endpoints consumed by the React frontend to:
+#
+#    1. Compute a 64-bit perceptual hash (pHash / "Visual DNA") from an image
+#       using a multi-layer DCT pipeline with adversarial noise defense.
+#
+#    2. Verify a suspect image against every artwork registered on the
+#       Algorand Testnet — catching rotations, mirrors, crops, zoom attacks,
+#       JPEG re-saves, sketch derivatives, and filter effects.
+#
+#    3. Proxy Algorand node (AlgoNode) requests to avoid browser-side geo-blocks.
+#
+#    4. Read the live on-chain registry directly from Algorand Box Storage —
+#       no local database, no caching, full trustlessness.
+#
+#  FORENSIC PIPELINE (compute-hash + verify)
+#  ------------------------------------------
+#    Raw Image
+#      → Layer 1: Median Blur (3×3)       — strips adversarial noise
+#      → Layer 2: Grayscale + Resize 32×32 — normalises resolution
+#      → Layer 3: 2D DCT (dctn_numpy)     — extracts frequency skeleton
+#      → Layer 4: 8×8 Low-Pass Filter     — discards high-freq noise
+#      → Layer 5: Median Bitmask          — encodes 64-bit Visual DNA
+#
+#  DETECTION COVERAGE (13 transforms tested per verification)
+#  -----------------------------------------------------------
+#    8-way D4 symmetry  →  rotations (90/180/270) + horizontal mirrors
+#    Zoom-out ×1.25/1.5/2.0  →  cropped screenshots, zoomed reposts
+#    SHA-256 derivative check  →  sketches, filters, stylistic re-renders
+#
+# =============================================================================
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageFilter
@@ -14,37 +58,89 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 
-# Load .env from the same directory as this file, regardless of cwd
+# ── Environment + Cloudinary ──────────────────────────────────────────────────
+# Load .env from the same directory as this file, regardless of working directory.
+# CLOUDINARY_URL must be set in .env (or Render's env var dashboard).
 load_dotenv(Path(__file__).parent / '.env')
 
-# Cloudinary — configured via CLOUDINARY_URL in .env
 cloudinary.config(cloudinary_url=os.getenv("CLOUDINARY_URL", ""))
 
-# ── Testnet config ────────────────────────────────────────────────────────────
+# ── Algorand Testnet Configuration ────────────────────────────────────────────
+# AlgoNode public gateway — no API key required for Testnet reads.
+# APP_ID references the live VeritasRegistry contract on Algorand Testnet.
 ALGOD_URL = "https://testnet-api.algonode.cloud"
-APP_ID    = 755806101   # Veritas VeritasRegistry App ID on Testnet
+APP_ID    = 755806101   # VeritasRegistry — Algorand Testnet
 
+
+# =============================================================================
+#  UTILITY FUNCTIONS
+# =============================================================================
 
 def encode_algorand_address(pk_bytes: bytes) -> str:
-    """Encode 32-byte public key as Algorand address (base32 + sha512/256 checksum)."""
+    """
+    Convert a raw 32-byte Algorand public key into a human-readable address.
+
+    Algorand addresses are: base32( pubkey + last_4_bytes_of_sha512/256(pubkey) )
+    This replicates algosdk.encoding.encode_address() without requiring the
+    Python algosdk package (removed to avoid dependency issues on Python 3.14+).
+
+    Parameters
+    ----------
+    pk_bytes : bytes
+        Raw 32-byte Ed25519 public key read from an Algorand Box value.
+
+    Returns
+    -------
+    str
+        58-character Algorand address (e.g. "NWAZYJJA...").
+    """
     chksum = hashlib.new("sha512_256", pk_bytes).digest()[-4:]
     return base64.b32encode(pk_bytes + chksum).decode().upper().rstrip("=")
 
 
 def dctn_numpy(arr: np.ndarray) -> np.ndarray:
-    """2D Type-II DCT with ortho normalization — replaces scipy.fft.dctn."""
+    """
+    Pure NumPy 2D Type-II Discrete Cosine Transform with ortho normalization.
+
+    This is a drop-in replacement for scipy.fft.dctn (which has no wheels for
+    Python 3.14+). It uses the standard FFT-based DCT algorithm:
+
+        DCT[k] = Re( exp(-j·π·k / 2N) · FFT([x, x_reversed]) )
+
+    Normalisation (ortho):
+        coefficient[0]  /= sqrt(4N)
+        coefficient[k>0] /= sqrt(2N)
+
+    The transform is applied row-wise first, then column-wise (separable 2D DCT).
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        2D float array (typically 32×32 grayscale pixel values).
+
+    Returns
+    -------
+    np.ndarray
+        2D DCT coefficient matrix — same shape as input.
+    """
     def _dct1d(x: np.ndarray) -> np.ndarray:
         N = len(x)
+        # Mirror the signal: [x, x_reversed] — standard DCT-II via FFT trick
         v = np.empty(2 * N)
         v[:N] = x
         v[N:] = x[::-1]
+        # Take real FFT, keep first N components
         V = np.fft.rfft(v)[:N]
+        # Apply phase shift to convert DFT → DCT
         k = np.arange(N, dtype=float)
         phase = np.exp(-1j * np.pi * k / (2.0 * N))
         result = np.real(phase * V)
+        # Ortho normalisation
         result[0] /= np.sqrt(4.0 * N)
         result[1:] /= np.sqrt(2.0 * N)
         return result
+
+    # Apply 1D DCT along rows (axis=1), then columns (axis=0)
     tmp = np.apply_along_axis(_dct1d, 1, arr.astype(float))
     return np.apply_along_axis(_dct1d, 0, tmp)
 
