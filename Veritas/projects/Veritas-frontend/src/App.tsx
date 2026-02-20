@@ -331,12 +331,14 @@ export default function App() {
       const spRes = await fetch(`${API}/algod/params`)
       const spRaw = await spRes.json()
       // Map AlgoNode field names → algosdk SuggestedParams shape
+      // genesisHash must be Uint8Array, not a base64 string
+      const genesisHashBytes = Uint8Array.from(atob(spRaw['genesis-hash']), c => c.charCodeAt(0))
       const sp = {
         fee: spRaw['fee'] ?? 0,
         flatFee: false,
         firstValid: spRaw['last-round'],
         lastValid: spRaw['last-round'] + 1000,
-        genesisHash: spRaw['genesis-hash'],
+        genesisHash: genesisHashBytes,
         genesisID: spRaw['genesis-id'],
         minFee: spRaw['min-fee'] ?? 1000,
       }
