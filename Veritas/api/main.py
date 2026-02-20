@@ -22,7 +22,7 @@ cloudinary.config(cloudinary_url=os.getenv("CLOUDINARY_URL", ""))
 
 # ── Testnet config ────────────────────────────────────────────────────────────
 ALGOD_URL = "https://testnet-api.algonode.cloud"
-APP_ID    = 755787017   # Veritas VeritasRegistry App ID on Testnet
+APP_ID    = 755806101   # Veritas VeritasRegistry App ID on Testnet
 
 
 def encode_algorand_address(pk_bytes: bytes) -> str:
