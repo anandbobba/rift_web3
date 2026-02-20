@@ -1,8 +1,195 @@
-# Veritas-contracts
+# Veritas Protocol — Smart Contract & Backend
 
-This project has been generated using AlgoKit. See below for default getting started instructions.
+**ARC-4 Algorand smart contract + FastAPI forensic engine powering the Veritas visual copyright registry.**
 
-# Setup
+[![App ID 755787017](https://img.shields.io/badge/Algorand%20Testnet-App%20%23755787017-00BFD8?style=flat-square)](https://testnet.algoexplorer.io/application/755787017)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+
+---
+
+## Smart Contract — `VeritasRegistry`
+
+**File:** `smart_contracts/veritas_registry/contract.py`
+**Language:** Algorand Python (compiled to AVM bytecode via PuyaPy)
+**Standard:** ARC-4
+**Live Contract:** App ID `755787017` on Algorand Testnet
+
+### Contract Logic
+
+```python
+from algopy import ARC4Contract, String, Account, BoxMap, Txn, arc4
+
+class VeritasRegistry(ARC4Contract):
+    def __init__(self) -> None:
+        self.registered_hashes = BoxMap(String, Account)
+
+    @arc4.abimethod
+    def register_work(self, p_hash: String) -> None:
+        assert p_hash not in self.registered_hashes, "Plagiarism Alert: Hash already registered!"
+        self.registered_hashes[p_hash] = Txn.sender
+```
+
+**`BoxMap(String, Account)`** maps each 64-bit pHash hex string → registrant's wallet address directly on-chain.
+
+The `assert` is the core anti-plagiarism guarantee: if a hash already exists, the **AVM itself rejects the transaction atomically** before it ever commits to a block. This is a protocol-level rejection, not an application-layer check.
+
+### Storage Model
+
+Each registered artwork occupies one Box:
+
+- **Key:** `"registered_hashes" + phash_hex_string`
+- **Value:** 32-byte Algorand public key of the registrant
+- **MBR cost:** `2500 + 400 × (key_length + 32)` microALGO — funded by the registering wallet
+
+Compiled artifacts are in `smart_contracts/artifacts/veritas_registry/`:
+
+```
+VeritasRegistry.approval.teal   ← Approval program (AVM bytecode)
+VeritasRegistry.clear.teal      ← Clear state program
+VeritasRegistry.arc56.json      ← ARC-56 app spec (ABI, types, storage schema)
+```
+
+---
+
+## Backend — FastAPI Forensic Engine
+
+**File:** `../../api/main.py`
+**Deployed on:** Render (Docker, `python:3.12-slim`)
+**Live URL:** `https://veritas-api-vgus.onrender.com`
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/` | Health check |
+| `GET` | `/registry` | Read all registered pHashes live from Algorand Testnet boxes |
+| `POST` | `/compute-hash` | Compute 64-bit pHash + upload original to Cloudinary |
+| `POST` | `/verify` | Full forensic scan against live chain registry |
+| `POST` | `/analyze` | DCT pipeline visualizer — returns heatmap + bitmask as base64 PNG |
+| `GET` | `/algod/params` | Proxy: Algorand transaction params (avoids browser geo-blocks) |
+| `GET` | `/algod/account/{address}` | Proxy: Algorand account info |
+
+---
+
+### Forensic Pipeline — `/compute-hash`
+
+```
+Upload → Median Blur (3×3) → Grayscale → Resize 32×32
+       → 2D DCT → 8×8 low-pass → Median bitmask → 64-bit pHash hex
+```
+
+**`dctn_numpy()`** — Pure NumPy 2D Type-II DCT with ortho normalization, replacing `scipy.fft.dctn` (no wheels for Python 3.14+). Applied row-wise then column-wise via `np.apply_along_axis`.
+
+After hashing, the original image is uploaded to **Cloudinary** (CDN archive) keyed by its pHash, used later for SHA-256 derivative verification.
+
+---
+
+### Verification Pipeline — `/verify`
+
+Runs 13 transforms on the suspect image and returns the minimum Hamming distance across all registered hashes:
+
+```
+┌──────────────────────────┬───────────────────────────────────────────┐
+│ Transform                │ Attack caught                             │
+├──────────────────────────┼───────────────────────────────────────────┤
+│ Original                 │ Direct copies, format re-saves            │
+│ 90° / 180° / 270°        │ Rotated uploads                           │
+│ Horizontal Mirror (×4)   │ Flipped + rotated combinations            │
+│ Zoom-out ×1.25 / ×1.5 / ×2 │ Cropped / zoomed-in screenshots        │
+│ Zoom-out + Mirror (×2)   │ Cropped + flipped derivatives             │
+└──────────────────────────┴───────────────────────────────────────────┘
+```
+
+**`pad_to_scale(img, factor)`** — Reverses zoom attacks by centering the suspect image on a `factor`-times-larger grey canvas, restoring the original framing before DCT comparison.
+
+**SHA-256 derivative check** — When pHash distance = 0, the backend fetches the original from Cloudinary and compares SHA-256 checksums. Same pHash but different SHA-256 = derivative work (sketch, filter, stylised re-render) → "Plagiarism Detected".
+
+#### Verdict Thresholds
+
+| Hamming Distance | SHA-256 | Verdict |
+|---|---|---|
+| 0 | Match | ✅ Original Verified |
+| 0 | Mismatch | ⚠️ Plagiarism Detected (derivative) |
+| 1 – 15 | — | ⚠️ Plagiarism Detected |
+| > 15 | — | ✅ Clear — new work |
+
+---
+
+### Chain Reading — `fetch_registry_from_chain()`
+
+Registry is read **live from Algorand Testnet** with no local cache:
+
+```python
+# List all boxes
+GET testnet-api.algonode.cloud/v2/applications/755787017/boxes
+
+# Read each box value (32-byte raw pubkey → Algorand address)
+GET testnet-api.algonode.cloud/v2/applications/755787017/box?name=b64:{name_b64}
+```
+
+`encode_algorand_address()` converts raw 32-byte public keys to human-readable addresses using SHA-512/256 checksum encoding — replacing `algosdk.encoding.encode_address()` to eliminate the Python algosdk dependency.
+
+---
+
+## Dependencies
+
+```
+fastapi==0.115.6         ← HTTP API framework
+uvicorn==0.34.0          ← ASGI server
+python-multipart==0.0.20 ← File upload parsing
+imagehash==4.3.1         ← pHash implementation
+Pillow==11.1.0           ← Image loading, blur, resize
+numpy==2.2.2             ← DCT computation (dctn_numpy)
+requests==2.32.3         ← AlgoNode REST API calls
+cloudinary==1.42.1       ← Original image archive
+python-dotenv==1.0.1     ← .env config loading
+```
+
+---
+
+## Local Development
+
+### Smart Contract
+
+```bash
+cd Veritas/projects/Veritas-contracts
+
+# Install dependencies
+poetry install
+
+# Compile contract → TEAL + ARC-56 artifacts
+algokit project run build
+
+# Deploy to Testnet
+python deploy_testnet.py
+```
+
+### Backend API
+
+```bash
+cd Veritas/api
+
+# Create .env
+echo "CLOUDINARY_URL=cloudinary://..." > .env
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run dev server (hot reload)
+uvicorn main:app --reload --port 8000
+
+# API: http://localhost:8000
+# Swagger docs: http://localhost:8000/docs
+```
+
+### Docker (matches Render production)
+
+```bash
+cd Veritas/api
+docker build -t veritas-api .
+docker run -p 8000:8000 --env-file .env veritas-api
+```
 
 ### Pre-requisites
 
