@@ -144,8 +144,18 @@ def dctn_numpy(arr: np.ndarray) -> np.ndarray:
     tmp = np.apply_along_axis(_dct1d, 1, arr.astype(float))
     return np.apply_along_axis(_dct1d, 0, tmp)
 
-app = FastAPI(title="Veritas Protocol API — Testnet")
 
+# =============================================================================
+#  FASTAPI APPLICATION
+# =============================================================================
+
+app = FastAPI(
+    title="Veritas Protocol API — Testnet",
+    description="AI-powered visual copyright forensics engine backed by Algorand blockchain.",
+    version="1.0.0",
+)
+
+# Allow all origins — frontend (Vercel) and local dev both need cross-origin access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -153,29 +163,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Pillow version compatibility (Transpose enum added in Pillow 9.1) ────────
+# ── Pillow version compatibility ───────────────────────────────────────────────
+# Image.Transpose enum was introduced in Pillow 9.1.
+# Fall back to the legacy integer constant for older environments.
 try:
     _FLIP_LR = Image.Transpose.FLIP_LEFT_RIGHT
 except AttributeError:
     _FLIP_LR = Image.FLIP_LEFT_RIGHT  # type: ignore[attr-defined]
 
+
 def pad_to_scale(img: Image.Image, factor: float) -> Image.Image:
     """
-    Simulate 'unzoom': place the image centred on a neutral-grey canvas that is
-    `factor` times larger. This reverses a crop/zoom so pHash sees the original
-    low-frequency structure again.
-    e.g. factor=2.0 → the query image fills only the centre 50% of the canvas.
+    Reverse a zoom/crop attack by padding the suspect image onto a larger canvas.
+
+    A plagiarist who zooms into a registered artwork and uploads the cropped
+    version would normally evade detection — the DCT of the crop looks different
+    to the DCT of the full image. This function counters that by placing the
+    suspect image centred on a neutral-grey canvas `factor` times its size,
+    restoring the original compositional framing before pHash comparison.
+
+    Example: factor=2.0 → the suspect image fills only the centre 50% of the
+    canvas, mimicking how the original would look if it were zoomed out by ×2.
+
+    Parameters
+    ----------
+    img    : PIL Image — the suspect (potentially cropped/zoomed) image
+    factor : float     — canvas scale multiplier (e.g. 1.25, 1.5, 2.0)
+
+    Returns
+    -------
+    PIL Image — the padded image, ready for pHash computation
     """
     rgb = img.convert("RGB")
     w, h = rgb.size
     nw, nh = int(w * factor), int(h * factor)
+    # Neutral grey (128, 128, 128) minimises bias in DCT low-frequency coefficients
     canvas = Image.new("RGB", (nw, nh), (128, 128, 128))
     canvas.paste(rgb, ((nw - w) // 2, (nh - h) // 2))
     return canvas
 
 
-# ── Transform Table: 8-way symmetry + zoom-out variants ───────────────────────
+# =============================================================================
+#  SYMMETRY TRANSFORM TABLE
+#  ─────────────────────────────────────────────────────────────────────────────
+#  During verification, the suspect image is tested in all 13 orientations below.
+#  The minimum Hamming distance across all transforms is used as the final score.
+#
+#  Coverage:
+#    · 8-way D4 dihedral group  →  all rigid symmetries (rotations + mirrors)
+#    · Zoom-out variants        →  reverses crop/zoom plagiarism attacks
+#    · Zoom-out + mirror        →  compound crop + flip attacks
+# =============================================================================
 SYMMETRY_TRANSFORMS = [
+    # ── D4 Dihedral Group (8-way rigid symmetry) ──────────────────────────────
     ("Original",                    lambda img: img),
     ("90deg Rotation",              lambda img: img.rotate(90, expand=True)),
     ("180deg Rotation",             lambda img: img.rotate(180)),
@@ -184,7 +224,7 @@ SYMMETRY_TRANSFORMS = [
     ("Mirrored 90deg Rotation",     lambda img: img.rotate(90, expand=True).transpose(_FLIP_LR)),
     ("Mirrored 180deg Rotation",    lambda img: img.rotate(180).transpose(_FLIP_LR)),
     ("Mirrored 270deg Rotation",    lambda img: img.rotate(270, expand=True).transpose(_FLIP_LR)),
-    # Zoom-invariance: pad the query image to simulate it being a zoomed-in crop
+    # ── Zoom-invariance (pad to simulate unzooming the suspect image) ─────────
     ("Zoom-out x1.25",              lambda img: pad_to_scale(img, 1.25)),
     ("Zoom-out x1.5",               lambda img: pad_to_scale(img, 1.50)),
     ("Zoom-out x2.0",               lambda img: pad_to_scale(img, 2.00)),
@@ -194,13 +234,465 @@ SYMMETRY_TRANSFORMS = [
 
 
 def denoise(img: Image.Image) -> Image.Image:
-    """3×3 Median Blur — strips adversarial high-freq perturbations."""
+    """
+    Apply a 3×3 Median Blur to strip adversarial high-frequency perturbations.
+
+    Adversarial attacks inject imperceptible pixel-level noise specifically
+    designed to alter perceptual hashes while leaving the image visually
+    unchanged. Median blur is highly effective at removing these perturbations
+    because it replaces each pixel with the median of its neighbourhood —
+    isolated outlier values (injected noise) are eliminated without blurring
+    structural edges that pHash relies on.
+
+    Both the original (at registration time) and the suspect image (at
+    verification time) go through this filter, ensuring fair comparison.
+    """
     return img.convert("RGB").filter(ImageFilter.MedianFilter(size=3))
 
 
 def compute_phash(img: Image.Image) -> imagehash.ImageHash:
-    """Denoise then pHash — always matches what was stored on-chain."""
+    """
+    Compute the 64-bit perceptual hash (Visual DNA) of an image.
+
+    Pipeline: Denoise (Median Blur) → imagehash.phash()
+      imagehash.phash() internally performs:
+        Grayscale → Resize 32×32 → 2D DCT → 8×8 low-pass → Median bitmask
+
+    Always applies denoise first — matching the behaviour used at registration.
+    """
     return imagehash.phash(denoise(img))
+
+
+def get_original_sha256_from_cloudinary(phash_str: str) -> str | None:
+    """
+    Fetch the originally registered image from Cloudinary and return its SHA-256.
+
+    Used as a second verification layer when pHash distance = 0 (perceptually
+    identical). A sketch, oil-paint filter, or stylistic re-render can produce
+    the exact same pHash as the original (same composition → same DCT skeleton),
+    but will have a completely different SHA-256 (different pixel bytes).
+
+    By comparing SHA-256 checksums, Veritas distinguishes:
+      · Exact original file   →  SHA-256 matches  →  "Original Verified"
+      · Derivative work       →  SHA-256 differs  →  "Plagiarism Detected"
+
+    Returns None if Cloudinary is unavailable — the caller falls back to
+    treating the image as "Original Verified" (safe default).
+    """
+    try:
+        resource = cloudinary.api.resource(f"veritas/artwork_{phash_str}")
+        url = resource.get("secure_url", "")
+        if url:
+            r = requests.get(url, timeout=15)
+            return hashlib.sha256(r.content).hexdigest()
+    except Exception as e:
+        print(f"[CLOUDINARY] Could not fetch original for SHA-256 comparison: {e}")
+    return None
+
+
+def fetch_registry_from_chain() -> dict:
+    """
+    Read the complete artwork registry live from Algorand Testnet Box Storage.
+
+    No local database or cache is used. Every call hits the blockchain directly,
+    guaranteeing that the registry state is always current and trustless.
+
+    Process:
+      1. GET /v2/applications/{APP_ID}/boxes  — list all registered box keys
+      2. For each box:
+           a. Decode box name from base64 → strip "registered_hashes" prefix → pHash hex
+           b. GET /v2/applications/{APP_ID}/box?name=b64:{name}  — read 32-byte value
+           c. Decode value bytes → Algorand address (encode_algorand_address)
+      3. Return dict { phash_hex: owner_address }
+
+    Returns
+    -------
+    dict
+        { "f3a7b2c9...": "NWAZYJJA...", ... }
+        Empty dict if the app has no boxes or if AlgoNode is unreachable.
+    """
+    registry: dict = {}
+    try:
+        resp = requests.get(f"{ALGOD_URL}/v2/applications/{APP_ID}/boxes", timeout=10)
+        box_list = resp.json().get("boxes", [])
+        print(f"[CHAIN] Found {len(box_list)} box(es) in App {APP_ID}")
+
+        for box_ref in box_list:
+            # Box name is base64-encoded bytes; decode to get the raw key string
+            box_name_b64   = box_ref["name"]
+            box_name_bytes = base64.b64decode(box_name_b64)
+            raw_key        = box_name_bytes.decode("utf-8", errors="replace")
+
+            # Strip the BoxMap prefix inserted by Algorand Python's BoxMap type
+            BOX_PREFIX = "registered_hashes"
+            phash_hex  = raw_key[len(BOX_PREFIX):] if raw_key.startswith(BOX_PREFIX) else raw_key
+
+            # Read the box value — a raw 32-byte Algorand public key
+            box_resp = requests.get(
+                f"{ALGOD_URL}/v2/applications/{APP_ID}/box",
+                params={"name": f"b64:{box_name_b64}"},
+                timeout=10,
+            )
+            value_bytes   = base64.b64decode(box_resp.json().get("value", ""))
+            owner_address = encode_algorand_address(value_bytes)
+
+            registry[phash_hex] = owner_address
+            print(f"[CHAIN] Loaded: {phash_hex[:8]}... -> {owner_address[:8]}...")
+
+    except Exception as e:
+        print(f"[CHAIN] Error reading boxes: {e}")
+
+    return registry
+
+
+# =============================================================================
+#  API ENDPOINTS
+# =============================================================================
+
+@app.get("/")
+async def root():
+    """Health check — confirms the API is running and lists available endpoints."""
+    return {
+        "status": "ok",
+        "message": "Veritas Protocol API is running",
+        "endpoints": ["/registry", "/compute-hash", "/verify", "/analyze"],
+    }
+
+
+@app.get("/algod/params")
+async def algod_params():
+    """
+    Proxy: Fetch suggested transaction parameters from Algorand Testnet.
+
+    Forwards the request to AlgoNode and returns the raw response.
+    This proxy exists because direct browser calls to testnet-api.algonode.cloud
+    are geo-blocked / rate-limited on some networks and ISPs.
+
+    The frontend maps the AlgoNode response (kebab-case field names) to the
+    algosdk SuggestedParams shape (camelCase) before building transactions.
+    """
+    try:
+        r = requests.get(f"{ALGOD_URL}/v2/transactions/params", timeout=10)
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/algod/account/{address}")
+async def algod_account(address: str):
+    """
+    Proxy: Fetch account information from Algorand Testnet.
+
+    Used by the frontend to check the app account's current balance before
+    computing the Minimum Balance Requirement (MBR) for a new Box allocation.
+
+    MBR formula: 2500 + 400 × (key_length + 32)  microALGO per box.
+    The frontend tops up the app account if its balance is insufficient.
+    """
+    try:
+        r = requests.get(f"{ALGOD_URL}/v2/accounts/{address}", timeout=10)
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/registry")
+async def get_registry():
+    """
+    Return the complete on-chain artwork registry, read live from Algorand Testnet.
+
+    Calls fetch_registry_from_chain() on every request — no caching.
+    Used by the frontend to display the registry count and wake the backend
+    during the Render cold-start polling loop.
+    """
+    try:
+        registry = fetch_registry_from_chain()
+        return {
+            "count": len(registry),
+            "app_id": APP_ID,
+            "network": "Testnet",
+            "hashes": [
+                {"phash": h, "owner": o, "short": h[:8] + "..."}
+                for h, o in registry.items()
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e), "count": 0, "hashes": []}
+
+
+@app.post("/compute-hash")
+async def compute_hash(file: UploadFile = File(...)):
+    """
+    STEP 1 — Compute the 64-bit Visual DNA signature of an artwork.
+
+    The frontend calls this endpoint before building the Algorand transaction.
+    The backend computes the pHash and archives the original image to Cloudinary
+    so it can later be used for SHA-256 derivative verification.
+
+    Pipeline:
+        Upload → Median Blur → imagehash.phash() → 64-bit hex pHash
+
+    Returns
+    -------
+    JSON:
+        phash         : str  — 64-bit hex pHash (the "Visual DNA")
+        status        : str  — "ok"
+        cloudinary_url: str  — CDN URL of the archived original (may be empty
+                               if Cloudinary upload fails — non-fatal)
+    """
+    try:
+        data  = await file.read()
+        img   = Image.open(io.BytesIO(data))
+        phash = compute_phash(img)
+        phash_str = str(phash)
+        print(f"[HASH] Computed pHash: {phash_str}")
+
+        # ── Archive original to Cloudinary ────────────────────────────────────
+        # Keyed by pHash so the verify endpoint can retrieve it for SHA-256 comparison.
+        # overwrite=False ensures a re-registration attempt doesn't overwrite the original.
+        cloudinary_url = ""
+        try:
+            upload_result = cloudinary.uploader.upload(
+                io.BytesIO(data),
+                folder="veritas",
+                public_id=f"artwork_{phash_str}",
+                resource_type="image",
+                overwrite=False,
+            )
+            cloudinary_url = upload_result.get("secure_url", "")
+            print(f"[CLOUDINARY] Uploaded: {cloudinary_url}")
+        except Exception as ce:
+            # Cloudinary failure is non-fatal — hash computation still succeeds.
+            # SHA-256 derivative check will be skipped at verify time.
+            print(f"[CLOUDINARY] Upload error (non-fatal): {ce}")
+
+        return {"phash": phash_str, "status": "ok", "cloudinary_url": cloudinary_url}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/verify")
+async def verify_artwork(file: UploadFile = File(...)):
+    """
+    STEP 2 — Multi-layer forensic scan of a suspect image against the live registry.
+
+    Verification Layers
+    -------------------
+    Layer 1 — Adversarial Noise Defense
+        3×3 Median Blur strips injected pixel-level perturbations before hashing.
+
+    Layer 2 — 13-Transform Symmetry + Zoom Loop
+        The suspect image is tested in 13 orientations (8 D4 symmetry transforms
+        + 5 zoom-out variants). Returns the minimum Hamming distance found.
+
+    Layer 3 — SHA-256 Derivative Check (distance = 0 only)
+        If pHash distance = 0, compares SHA-256 of the uploaded file against the
+        Cloudinary-archived original. Detects sketches, filters, and stylised
+        re-renders that share the same visual structure but differ in bytes.
+
+    Verdict Thresholds
+    ------------------
+        distance = 0, SHA-256 match    →  "Original"           (exact file)
+        distance = 0, SHA-256 mismatch →  "Plagiarism Detected" (derivative)
+        distance 1–15                  →  "Plagiarism Detected" (modified copy)
+        distance > 15                  →  "Clear"              (new artwork)
+
+    All registry data is read live from Algorand Testnet — no local cache.
+    """
+    try:
+        data = await file.read()
+        img  = Image.open(io.BytesIO(data))
+
+        # ── Pull live registry from Algorand Testnet ──────────────────────────
+        registry = fetch_registry_from_chain()
+
+        if not registry:
+            return {
+                "status": "No Registry",
+                "message": f"No artworks found in App {APP_ID} on Testnet. Register one first.",
+            }
+
+        # ── Run all 13 transforms and track the best (lowest) Hamming distance ─
+        best_distance   = None
+        best_match_hash = None
+        best_match_owner = None
+        best_transform  = "Original"
+
+        for transform_name, transform_fn in SYMMETRY_TRANSFORMS:
+            try:
+                transformed   = transform_fn(img)
+                suspect_hash  = compute_phash(transformed)
+
+                for stored_hash_str, owner in registry.items():
+                    stored_hash = imagehash.hex_to_hash(stored_hash_str)
+                    # Hamming distance: number of differing bits between the two 64-bit hashes
+                    distance    = suspect_hash - stored_hash
+                    print(f"[VERIFY] {transform_name:28s} dist={distance:3d} vs {stored_hash_str[:8]}...")
+
+                    if best_distance is None or distance < best_distance:
+                        best_distance    = distance
+                        best_match_hash  = stored_hash_str
+                        best_match_owner = owner
+                        best_transform   = transform_name
+
+                    # Exact match — no need to continue testing further transforms
+                    if best_distance == 0:
+                        break
+
+            except Exception as te:
+                print(f"[VERIFY] Transform error ({transform_name}): {te}")
+                continue
+
+            if best_distance == 0:
+                break
+
+        detection_method = f"Detected via {best_transform}"
+
+        # ── Layer 3: SHA-256 derivative check (distance = 0 only) ─────────────
+        if best_distance == 0:
+            uploaded_sha = hashlib.sha256(data).hexdigest()
+            original_sha = get_original_sha256_from_cloudinary(best_match_hash)
+            print(f"[VERIFY] SHA-256 uploaded={uploaded_sha[:12]}... original={str(original_sha)[:12]}...")
+
+            if original_sha is not None and uploaded_sha != original_sha:
+                # pHash matched but bytes differ — this is a derivative work
+                # (sketch, filter, stylistic re-render, etc.), not the original file
+                return {
+                    "status": "Plagiarism Detected",
+                    "score": 0,
+                    "matched_hash": best_match_hash,
+                    "owner": best_match_owner,
+                    "detection_method": f"{detection_method} (near-identical derivative — same composition, different file)",
+                    "app_id": APP_ID,
+                    "network": "Testnet",
+                }
+
+            # SHA-256 matches (or Cloudinary unavailable) — genuine original file
+            return {
+                "status": "Original",
+                "score": 0,
+                "matched_hash": best_match_hash,
+                "owner": best_match_owner,
+                "detection_method": detection_method,
+                "app_id": APP_ID,
+                "network": "Testnet",
+            }
+
+        # ── Plagiarism: close enough to be a modified copy ────────────────────
+        if best_distance <= 15:
+            return {
+                "status": "Plagiarism Detected",
+                "score": int(best_distance),
+                "matched_hash": best_match_hash,
+                "owner": best_match_owner,
+                "detection_method": detection_method,
+                "app_id": APP_ID,
+                "network": "Testnet",
+            }
+
+        # ── Clear: no visual similarity across all 13 tested orientations ─────
+        return {
+            "status": "Clear",
+            "score": int(best_distance),
+            "detection_method": f"All transforms tested — best: {best_transform} (dist={best_distance})",
+            "app_id": APP_ID,
+            "network": "Testnet",
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/analyze")
+async def analyze_artwork(file: UploadFile = File(...)):
+    """
+    FORENSIC VISUALISER — expose every step of the pHash pipeline as data.
+
+    Returns the intermediate outputs of each pipeline stage so the frontend
+    can render a live forensic report panel showing exactly how the Visual DNA
+    is extracted from the image.
+
+    Pipeline stages returned
+    ------------------------
+    gray_original_b64 : 32×32 grayscale before denoising  (raw input)
+    gray_32x32_b64    : 32×32 grayscale after Median Blur  (denoised)
+    dct_heatmap       : 8×8 DCT low-pass coefficients, normalised 0–255
+    bitmask_8x8       : 64-bit binary array (each coeff > median → 1)
+    phash_hex         : final 64-bit pHash (hex string)
+    phash_binary      : final 64-bit pHash (binary string)
+    median_frequency  : the median DCT coefficient value used as threshold
+    pixels_32x32      : raw 32×32 pixel values (for frontend rendering)
+    """
+    try:
+        data = await file.read()
+        img  = Image.open(io.BytesIO(data))
+
+        # ── Stage 1: Median Blur (adversarial noise defense) ──────────────────
+        denoised_rgb = denoise(img)
+
+        # ── Stage 2: Grayscale + 32×32 resize (denoised) ─────────────────────
+        gray = denoised_rgb.convert("L").resize((32, 32), Image.LANCZOS)
+        buf  = io.BytesIO()
+        gray.save(buf, format="PNG")
+        gray_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        # ── Stage 2 (raw): same resize without denoising — for visual comparison
+        gray_original = img.convert("L").resize((32, 32), Image.LANCZOS)
+        buf2 = io.BytesIO()
+        gray_original.save(buf2, format="PNG")
+        gray_original_b64 = base64.b64encode(buf2.getvalue()).decode("utf-8")
+
+        pixels = list(gray.getdata())
+
+        # ── Stage 3: 2D DCT ───────────────────────────────────────────────────
+        arr        = np.array(gray, dtype=float)
+        dct_matrix = dctn_numpy(arr)
+
+        # ── Stage 4: 8×8 Low-Pass Filter (keep top-left 64 coefficients) ──────
+        low_freq    = dct_matrix[:8, :8]
+        coeffs_full = low_freq.flatten()
+
+        # ── Stage 5: Median Bitmask → 64-bit pHash ────────────────────────────
+        # Exclude DC component (index 0) from median calculation — it encodes
+        # average brightness which would skew the threshold.
+        coeffs_no_dc = coeffs_full[1:]
+        median_val   = float(np.median(coeffs_no_dc))
+        bits         = [1 if float(c) > median_val else 0 for c in coeffs_full]
+        binary_str   = "".join(str(b) for b in bits)
+
+        # Use imagehash's own phash for the canonical hex output (ensures consistency)
+        official_phash = str(imagehash.phash(denoised_rgb))
+
+        # Normalise DCT heatmap to 0–255 range for frontend colour rendering
+        dct_norm = low_freq.copy()
+        dct_min, dct_max = dct_norm.min(), dct_norm.max()
+        if dct_max != dct_min:
+            dct_norm = (dct_norm - dct_min) / (dct_max - dct_min) * 255
+        dct_flat = [float(v) for v in dct_norm.flatten()]
+
+        print(f"[ANALYZE] pHash: {official_phash} | Median: {median_val:.2f}")
+
+        return {
+            "phash_hex":        official_phash,
+            "phash_binary":     binary_str,
+            "median_frequency": round(median_val, 4),
+            "bitmask_8x8":      bits,
+            "dct_heatmap":      dct_flat,
+            "gray_32x32_b64":   gray_b64,           # denoised — what the algorithm hashes
+            "gray_original_b64": gray_original_b64,  # raw — before denoising, for comparison
+            "pixels_32x32":     pixels,
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ── Dev server entry point ────────────────────────────────────────────────────
+# In production (Render), uvicorn is started via the Dockerfile CMD.
+# This block allows running `python main.py` directly during local development.
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 def get_original_sha256_from_cloudinary(phash_str: str) -> str | None:
